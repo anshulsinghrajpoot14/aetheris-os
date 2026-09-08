@@ -341,10 +341,10 @@ def generate_travel_boarding_pass(pnr, passenger_name, train_details, travel_cla
         elements.append(Spacer(1, 14))
 
         data = [
-            ["PNR TOKEN", pnr, "TRAVEL STATUS", "CONFIRMED / PAID"],
-            ["PASSENGER", passenger_name.upper(), "CLASS / SEAT", f"{travel_class} | {seat_no}"],
-            ["ROUTE", route, "SERVICE / TRAIN", train_details],
-            ["ISSUED BY", f"{OS_NAME} Neural Core", "ARCHITECT", CREATOR_FULL_NAME.upper()]
+            ["PNR / TOKEN", pnr, "STATUS", "CONFIRMED / DISPATCHED"],
+            ["PASSENGER", passenger_name.upper(), "CLASS / VEHICLE", f"{travel_class} | {seat_no}"],
+            ["ROUTE", route, "SERVICE / CARRIER", train_details],
+            ["ISSUED BY", f"{OS_NAME} Neural Engine", "ARCHITECT", CREATOR_FULL_NAME.upper()]
         ]
 
         t = Table(data, colWidths=[130, 140, 130, 140])
@@ -424,39 +424,162 @@ def generate_docx_report(title, content):
     except Exception:
         return None
 
-def resolve_route_schedule(from_city, to_city):
-    fc, tc = from_city.lower(), to_city.lower()
-    if "jaipur" in fc and "delhi" in tc:
-        return pd.DataFrame([
-            {"Train No.": "20977", "Train Name": "Ajmer - Delhi Cantt Vande Bharat", "Departs": "07:50 AM (JP)", "Arrives": "11:35 AM (DEC)", "Duration": "3h 45m", "Class": "CC / EC", "Fare": "₹880 / ₹1650"},
-            {"Train No.": "12016", "Train Name": "Ajmer New Delhi Shatabdi Exp", "Departs": "17:50 PM (JP)", "Arrives": "22:40 PM (NDLS)", "Duration": "4h 50m", "Class": "CC / EC", "Fare": "₹775 / ₹1480"},
-            {"Train No.": "12985", "Train Name": "Jaipur Delhi Sarai Rohilla Double Decker", "Departs": "06:00 AM (JP)", "Arrives": "10:25 AM (DEE)", "Duration": "4h 25m", "Class": "CC / EV", "Fare": "₹495 / ₹1200"},
-            {"Train No.": "12413", "Train Name": "Pooja SF Express", "Departs": "14:15 PM (JP)", "Arrives": "20:45 PM (DLI)", "Duration": "6h 30m", "Class": "SL / 3A / 2A", "Fare": "₹215 / ₹580 / ₹830"}
-        ])
-    else:
-        return pd.DataFrame([
-            {"Train No.": "12301", "Train Name": "Superfast Express", "Departs": "06:15 AM", "Arrives": "12:30 PM", "Duration": "6h 15m", "Class": "SL / 3A / 2A", "Fare": "₹380 / ₹950 / ₹1380"},
-            {"Train No.": "22436", "Train Name": "Vande Bharat Express", "Departs": "15:00 PM", "Arrives": "21:10 PM", "Duration": "6h 10m", "Class": "CC / EC", "Fare": "₹1250 / ₹2200"}
-        ])
+# ============================================================
+# 6. UNIVERSAL MULTI-MODAL MOBILITY ENGINE (Cab, Bike, Bus, Train, Flight)
+# ============================================================
+def resolve_dynamic_mobility(user_text):
+    prompt = f"""
+    The user is requesting transit/travel: "{user_text}".
+    1. Extract 'from_city' (origin) and 'to_city' (destination).
+    2. Identify the specific transit mode: 
+       - 'train' (railways, irctc)
+       - 'bus' (roadways, sleeper bus)
+       - 'cab' (uber, ola, taxi)
+       - 'bike' (rapido, moto taxi)
+       - 'flight' (aeroplane, airlines)
+    3. Generate 3 to 4 realistic options/services for this exact transit mode between those points.
+       Columns required:
+       - 'Identifier' (Vehicle/Train/Flight number or Service model)
+       - 'Service Name' (Carrier, Airline, Cab tier like UberGo/Ola Prime, or Bus operator)
+       - 'Departs / ETA' (Departure time or Arrival ETA)
+       - 'Duration' (Transit time)
+       - 'Class / Category' (e.g., Sedan, Mini, Moto, CC/EC, 3A/2A, Economy)
+       - 'Estimated Fare' (in INR)
+
+    Return ONLY a valid JSON object matching:
+    {{
+      "from_city": "Origin",
+      "to_city": "Destination",
+      "mode": "cab|bike|bus|train|flight",
+      "services": [
+        {{
+          "Identifier": "UB-SEDAN",
+          "Service Name": "Uber Premier",
+          "Departs / ETA": "5 mins away",
+          "Duration": "35 mins",
+          "Class / Category": "Sedan AC",
+          "Estimated Fare": "₹320"
+        }}
+      ]
+    }}
+    """
+    
+    raw_json = None
+    if GROQ_API_KEY and Groq:
+        try:
+            client = Groq(api_key=GROQ_API_KEY, timeout=5.0)
+            res = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                response_format={"type": "json_object"}
+            )
+            raw_json = res.choices[0].message.content
+        except Exception:
+            pass
+
+    if not raw_json and GEMINI_API_KEY and genai:
+        try:
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            res = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt
+            )
+            clean_res = re.search(r'\{.*\}', res.text, re.DOTALL)
+            if clean_res:
+                raw_json = clean_res.group(0)
+        except Exception:
+            pass
+
+    if raw_json:
+        try:
+            data = json.loads(raw_json)
+            from_c = data.get("from_city", "Origin").strip().title()
+            to_c = data.get("to_city", "Destination").strip().title()
+            services = data.get("services", [])
+            mode = data.get("mode", "train").lower()
+            df = pd.DataFrame(services) if services else None
+            return {
+                "from_city": from_c,
+                "to_city": to_c,
+                "mode": mode,
+                "schedule": df,
+                "primary_service": services[0]["Service Name"] if services else "Express Service"
+            }
+        except Exception:
+            pass
+
+    return {
+        "from_city": "Origin",
+        "to_city": "Destination",
+        "mode": "train",
+        "schedule": None,
+        "primary_service": "Transit Service"
+    }
 
 def detect_booking_or_action_intent(user_text):
     txt = user_text.lower()
-    if any(k in txt for k in ["train", "irctc", "railway", "ticket book"]):
-        match = re.search(r'(?:from|to|between)\s+([a-zA-Z]+)\s+(?:to|and)\s+([a-zA-Z]+)', txt, re.IGNORECASE)
-        from_stn = match.group(1).title() if match else "Jaipur"
-        to_stn = match.group(2).title() if match else "Delhi"
-        irctc_url = f"https://www.confirmtkt.com/rbooking-d/{urllib.parse.quote(from_stn)}-to-{urllib.parse.quote(to_stn)}"
-        schedule_df = resolve_route_schedule(from_stn, to_stn)
+    
+    # Universal Mobility Trigger (Train, Bus, Cab, Bike, Flight)
+    transit_keywords = [
+        "train", "irctc", "railway", "ticket book",
+        "bus", "roadways", "redbus",
+        "cab", "uber", "ola", "taxi",
+        "bike", "rapido", "scooter",
+        "flight", "aeroplane", "air ticket", "plane", "airline"
+    ]
+    
+    if any(k in txt for k in transit_keywords):
+        mobility = resolve_dynamic_mobility(user_text)
+        from_c = mobility["from_city"]
+        to_c = mobility["to_city"]
+        mode = mobility["mode"]
+
+        if mode == "cab":
+            icon = "🚕"
+            title = f"{icon} On-Demand Cab Dispatch: {from_c} ➔ {to_c}"
+            link_url = f"https://m.uber.com/ul/?action=setPickup&pickup=my_location"
+            btn_label = f"⚡ Dispatch Cab (Uber / Ola) to {to_c}"
+            desc = f"Instant cab options computed between {from_c} and {to_c}:"
+        elif mode == "bike":
+            icon = "🛵"
+            title = f"{icon} Rapid Bike Taxi Allocator: {from_c} ➔ {to_c}"
+            link_url = "https://www.rapido.bike/"
+            btn_label = f"⚡ Request Bike Rider (Rapido)"
+            desc = f"Fastest two-wheeler intra-city commute options:"
+        elif mode == "bus":
+            icon = "🚌"
+            title = f"{icon} Intercity Bus Matrix: {from_c} ➔ {to_c}"
+            link_url = f"https://www.redbus.in/bus-tickets/{urllib.parse.quote(from_c.lower())}-to-{urllib.parse.quote(to_c.lower())}"
+            btn_label = f"⚡ Reserve Bus Seats ({from_c} ➔ {to_c})"
+            desc = f"Private & State Roadways services available:"
+        elif mode == "flight":
+            icon = "✈️"
+            title = f"{icon} Airfare & Airline Matrix: {from_c} ➔ {to_c}"
+            link_url = "https://www.makemytrip.com/flights/"
+            btn_label = f"⚡ Book Flights ({from_c} ➔ {to_c})"
+            desc = f"Direct and connecting flight routes synced:"
+        else:
+            icon = "🚆"
+            title = f"{icon} Pan-India Railway Schedule: {from_c} ➔ {to_c}"
+            link_url = f"https://www.confirmtkt.com/rbooking-d/{urllib.parse.quote(from_c)}-to-{urllib.parse.quote(to_c)}"
+            btn_label = f"⚡ Confirm Reservation on IRCTC ({from_c} ➔ {to_c})"
+            desc = f"Direct Indian Railways schedule between {from_c} and {to_c}:"
+
         return {
-            "type": "train",
-            "title": f"🚆 Route Schedule & Live Availability: {from_stn} ➔ {to_stn}",
-            "schedule": schedule_df,
-            "desc": f"Direct timetable synced between {from_stn} and {to_stn}. Choose your train & verify seats:",
-            "link": irctc_url,
-            "btn_label": f"⚡ Confirm Reservation on IRCTC ({from_stn} ➔ {to_stn})",
-            "from_stn": from_stn,
-            "to_stn": to_stn
+            "type": "mobility",
+            "mode": mode,
+            "title": title,
+            "schedule": mobility["schedule"],
+            "desc": desc,
+            "link": link_url,
+            "btn_label": btn_label,
+            "from_stn": from_c,
+            "to_stn": to_c,
+            "primary_service": mobility["primary_service"]
         }
+
+    # Movie Intent
     if any(k in txt for k in ["movie", "cinema", "film", "bookmyshow"]):
         movie_match = re.search(r'movie(?:\s+ticket)?(?:\s+for)?\s+([a-zA-Z0-9\s]+)', txt, re.IGNORECASE)
         movie_title = movie_match.group(1).strip().title() if movie_match else "Trending Releases"
@@ -464,22 +587,15 @@ def detect_booking_or_action_intent(user_text):
         return {
             "type": "movie",
             "title": f"🎬 Cinema Seat Allocator: {movie_title}",
-            "desc": "Showtimes and auditoriums indexed. Open auditorium layout to select seats:",
+            "desc": "Auditoriums and showtimes synced. Select seats:",
             "link": bms_url,
             "btn_label": f"Select Seats on BookMyShow ({movie_title})"
         }
-    if any(k in txt for k in ["flight", "aeroplane", "air ticket", "plane"]):
-        return {
-            "type": "flight",
-            "title": "✈️ Airfare Dispatch Matrix",
-            "desc": "Airfare routes synced across IndiGo, Air India, and Vistara:",
-            "link": "https://www.makemytrip.com/flights/",
-            "btn_label": "Review Airfares & Book Flight"
-        }
+
     return None
 
 # ============================================================
-# 6. ZERO-FREEZE INFERENCE (GROQ PRIMARY WITH FAST FAILOVER)
+# 7. ZERO-FREEZE INFERENCE (GROQ PRIMARY WITH FAST FAILOVER)
 # ============================================================
 def run_ai_completion(user_text):
     system_instruction = (
@@ -543,7 +659,7 @@ def run_ai_completion(user_text):
     return f"I am {OS_NAME}, engineered by {CREATOR_FULL_NAME}. How can I assist your workflow today?"
 
 # ============================================================
-# 7. HEADER
+# 8. HEADER
 # ============================================================
 st.markdown(
     f"""<div class="aetheris-header">
@@ -566,7 +682,7 @@ st.markdown(
 )
 
 # ============================================================
-# 8. SIDEBAR CONTROLS: ATTACHMENTS, MIC & QUICK TOOLS
+# 9. SIDEBAR CONTROLS: ATTACHMENTS, MIC & QUICK TOOLS
 # ============================================================
 with st.sidebar:
     st.markdown(f"**💠 {OS_NAME}**")
@@ -628,7 +744,7 @@ with st.sidebar:
     st.caption(f"{OS_NAME} • Autonomous Enterprise Engine")
 
 # ============================================================
-# 9. UNIFIED INTERACTION WORKSPACE
+# 10. UNIFIED INTERACTION WORKSPACE
 # ============================================================
 for idx, msg in enumerate(st.session_state.messages):
     avatar = "👤" if msg["role"] == "user" else "🤖"
@@ -669,7 +785,7 @@ for idx, msg in enumerate(st.session_state.messages):
             if msg.get("docx_data"):
                 st.download_button("⬇ Download Word File (DOCX)", msg["docx_data"], file_name="aetheris_document.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"docx_{idx}")
 
-user_prompt = st.chat_input("Ask Aetheris OS anything (e.g. 'draft NDA agreement', 'analyze data', 'draft email to client', 'audit PF')...")
+user_prompt = st.chat_input("Ask Aetheris OS anything (e.g. 'book cab to airport', 'bus Jaipur to Alwar', 'analyze data')...")
 
 if user_prompt:
     st.session_state.messages.append({"role": "user", "content": user_prompt})
@@ -777,7 +893,7 @@ if user_prompt:
                     "mailto": mailto_link
                 })
 
-    # 5. Real Travel Schedule & Interactive Booking Matrix
+    # 5. Universal Dynamic Pan-India Mobility (Cab, Bike, Bus, Train, Flight)
     elif action_intent:
         with st.chat_message("assistant", avatar="🤖"):
             st.markdown(f"#### {action_intent['title']}")
@@ -787,36 +903,42 @@ if user_prompt:
             st.write(action_intent["desc"])
             st.link_button(action_intent["btn_label"], action_intent["link"], use_container_width=True)
 
-            if action_intent["type"] == "train":
-                with st.expander("🎫 Complete In-App Passenger Manifest & Seat Reservation", expanded=True):
+            if action_intent["type"] == "mobility":
+                mode_name = action_intent.get("mode", "Transit").title()
+                with st.expander(f"🎫 Complete {mode_name} Manifest & Digital Token", expanded=True):
                     c_p1, c_p2 = st.columns(2)
                     with c_p1:
                         p_name = st.text_input("Passenger Full Name", value=CREATOR_FULL_NAME, key="p_name_input")
                         p_age = st.number_input("Age", min_value=5, max_value=100, value=21, key="p_age_input")
                     with c_p2:
-                        p_class = st.selectbox("Preferred Class", ["Executive Chair Car (EC)", "AC Chair Car (CC)", "AC 3-Tier (3A)", "AC 2-Tier (2A)"], key="p_class_input")
-                        p_berth = st.selectbox("Berth Preference", ["Window Side", "Aisle", "Lower", "No Preference"], key="p_berth_input")
+                        if action_intent.get("mode") in ["cab", "bike"]:
+                            p_class = st.selectbox("Vehicle Category", ["Standard / Go", "Sedan / Prime", "SUV / XL", "Moto Bike"], key="p_class_input")
+                            p_berth = st.selectbox("Pickup Preference", ["Immediate (5 mins)", "Schedule for later"], key="p_berth_input")
+                        else:
+                            p_class = st.selectbox("Class Preference", ["Executive / AC Seater", "Sleeper / Economy", "3A / 2A AC", "First Class"], key="p_class_input")
+                            p_berth = st.selectbox("Seat Preference", ["Window Side", "Aisle", "Lower", "No Preference"], key="p_berth_input")
 
-                    if st.button("Generate Confirmed Boarding Pass"):
+                    if st.button("Generate Confirmed Mobility Pass"):
                         gen_pnr = f"ATH-{random.randint(100000, 999999)}"
-                        seat_token = f"C{random.randint(1, 6)}-{random.randint(11, 72)} ({p_berth})"
-                        route_name = f"{action_intent.get('from_stn', 'Jaipur')} ➔ {action_intent.get('to_stn', 'Delhi')}"
+                        seat_token = f"Seat/Slot: {random.randint(1, 45)} ({p_berth})"
+                        route_name = f"{action_intent['from_stn']} ➔ {action_intent['to_stn']}"
+                        service_carrier = action_intent.get("primary_service", f"{mode_name} Express")
                         
                         pass_bytes = generate_travel_boarding_pass(
                             pnr=gen_pnr,
                             passenger_name=p_name,
-                            train_details="Ajmer - Delhi Cantt Vande Bharat",
+                            train_details=service_carrier,
                             travel_class=p_class,
                             seat_no=seat_token,
                             route=route_name
                         )
 
-                        st.success(f"Reservation Manifest Created! PNR: **{gen_pnr}** | Seat: **{seat_token}**")
+                        st.success(f"Transit Token Generated! ID: **{gen_pnr}** | Carrier: **{service_carrier}**")
                         if pass_bytes:
                             st.download_button(
-                                label="📥 Download Official Boarding Pass (PDF)",
+                                label="📥 Download Official Mobility Pass (PDF)",
                                 data=pass_bytes,
-                                file_name=f"Boarding_Pass_{gen_pnr}.pdf",
+                                file_name=f"Mobility_Token_{gen_pnr}.pdf",
                                 mime="application/pdf",
                                 use_container_width=True
                             )
