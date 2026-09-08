@@ -425,40 +425,62 @@ def generate_docx_report(title, content):
         return None
 
 # ============================================================
-# 6. UNIVERSAL MULTI-MODAL MOBILITY ENGINE (Cab, Bike, Bus, Train, Flight)
+# 6. UNIVERSAL MULTI-MODAL MOBILITY ENGINE (Instant Regex + Dynamic AI)
 # ============================================================
-def resolve_dynamic_mobility(user_text):
-    prompt = f"""
-    The user is requesting transit/travel: "{user_text}".
-    1. Extract 'from_city' (origin) and 'to_city' (destination).
-    2. Identify the specific transit mode: 
-       - 'train' (railways, irctc)
-       - 'bus' (roadways, sleeper bus)
-       - 'cab' (uber, ola, taxi)
-       - 'bike' (rapido, moto taxi)
-       - 'flight' (aeroplane, airlines)
-    3. Generate 3 to 4 realistic options/services for this exact transit mode between those points.
-       Columns required:
-       - 'Identifier' (Vehicle/Train/Flight number or Service model)
-       - 'Service Name' (Carrier, Airline, Cab tier like UberGo/Ola Prime, or Bus operator)
-       - 'Departs / ETA' (Departure time or Arrival ETA)
-       - 'Duration' (Transit time)
-       - 'Class / Category' (e.g., Sedan, Mini, Moto, CC/EC, 3A/2A, Economy)
-       - 'Estimated Fare' (in INR)
+def extract_route_rule_based(user_text):
+    txt = user_text.strip()
+    match = re.search(r'(?:from\s+)?([a-zA-Z0-9\s]+?)\s+(?:to|till|se)\s+([a-zA-Z0-9\s]+)', txt, re.IGNORECASE)
+    if match:
+        clean_words = ["book", "train", "ticket", "bus", "cab", "taxi", "flight", "plane", "bike", "uber", "ola", "rapido", "find", "show", "me", "station", "junction"]
+        from_raw = match.group(1).strip()
+        to_raw = match.group(2).strip()
+        
+        from_parts = [w for w in from_raw.split() if w.lower() not in clean_words]
+        to_parts = [w for w in to_raw.split() if w.lower() not in clean_words]
+        
+        from_city = " ".join(from_parts).strip().title() if from_parts else from_raw.title()
+        to_city = " ".join(to_parts).strip().title() if to_parts else to_raw.title()
+        return from_city, to_city
+    return "Origin Station", "Destination Station"
 
-    Return ONLY a valid JSON object matching:
+def resolve_dynamic_mobility(user_text):
+    txt = user_text.lower()
+    
+    # 1. Precise Mode Identification
+    if any(k in txt for k in ["cab", "uber", "ola", "taxi"]):
+        mode = "cab"
+    elif any(k in txt for k in ["bike", "rapido", "scooter"]):
+        mode = "bike"
+    elif any(k in txt for k in ["bus", "roadways", "redbus"]):
+        mode = "bus"
+    elif any(k in txt for k in ["flight", "aeroplane", "air ticket", "plane", "airline"]):
+        mode = "flight"
+    else:
+        mode = "train"
+
+    # 2. Extract Cities Instantly
+    rule_from, rule_to = extract_route_rule_based(user_text)
+
+    # 3. Dynamic Transit Matrix Synthesis
+    prompt = f"""
+    You are a transit system. The user wants {mode} booking:
+    From: "{rule_from}"
+    To: "{rule_to}"
+
+    Provide 3 realistic transit options/services specifically for {mode} between {rule_from} and {rule_to}.
+    Return ONLY a JSON object:
     {{
-      "from_city": "Origin",
-      "to_city": "Destination",
-      "mode": "cab|bike|bus|train|flight",
+      "from_city": "{rule_from}",
+      "to_city": "{rule_to}",
+      "mode": "{mode}",
       "services": [
         {{
-          "Identifier": "UB-SEDAN",
-          "Service Name": "Uber Premier",
-          "Departs / ETA": "5 mins away",
-          "Duration": "35 mins",
-          "Class / Category": "Sedan AC",
-          "Estimated Fare": "₹320"
+          "Identifier": "EXP-101",
+          "Service Name": "Direct {mode.title()} Service",
+          "Departs / ETA": "08:15 AM",
+          "Duration": "2h 30m",
+          "Class / Category": "Standard",
+          "Estimated Fare": "₹280"
         }}
       ]
     }}
@@ -467,7 +489,7 @@ def resolve_dynamic_mobility(user_text):
     raw_json = None
     if GROQ_API_KEY and Groq:
         try:
-            client = Groq(api_key=GROQ_API_KEY, timeout=5.0)
+            client = Groq(api_key=GROQ_API_KEY, timeout=8.0)
             res = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
@@ -481,10 +503,7 @@ def resolve_dynamic_mobility(user_text):
     if not raw_json and GEMINI_API_KEY and genai:
         try:
             client = genai.Client(api_key=GEMINI_API_KEY)
-            res = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt
-            )
+            res = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
             clean_res = re.search(r'\{.*\}', res.text, re.DOTALL)
             if clean_res:
                 raw_json = clean_res.group(0)
@@ -494,33 +513,34 @@ def resolve_dynamic_mobility(user_text):
     if raw_json:
         try:
             data = json.loads(raw_json)
-            from_c = data.get("from_city", "Origin").strip().title()
-            to_c = data.get("to_city", "Destination").strip().title()
             services = data.get("services", [])
-            mode = data.get("mode", "train").lower()
             df = pd.DataFrame(services) if services else None
             return {
-                "from_city": from_c,
-                "to_city": to_c,
+                "from_city": data.get("from_city", rule_from),
+                "to_city": data.get("to_city", rule_to),
                 "mode": mode,
                 "schedule": df,
-                "primary_service": services[0]["Service Name"] if services else "Express Service"
+                "primary_service": services[0]["Service Name"] if services else f"{mode.title()} Express"
             }
         except Exception:
             pass
 
+    # Dynamic Fallback Table
+    default_services = [
+        {"Identifier": f"{mode[:3].upper()}-01", "Service Name": f"{rule_from} Superfast {mode.title()}", "Departs / ETA": "07:30 AM", "Duration": "Direct", "Class / Category": "Standard / AC", "Estimated Fare": "₹320"},
+        {"Identifier": f"{mode[:3].upper()}-02", "Service Name": f"{rule_to} Express {mode.title()}", "Departs / ETA": "14:15 PM", "Duration": "Direct", "Class / Category": "Premium", "Estimated Fare": "₹650"}
+    ]
     return {
-        "from_city": "Origin",
-        "to_city": "Destination",
-        "mode": "train",
-        "schedule": None,
-        "primary_service": "Transit Service"
+        "from_city": rule_from,
+        "to_city": rule_to,
+        "mode": mode,
+        "schedule": pd.DataFrame(default_services),
+        "primary_service": f"{rule_from} - {rule_to} {mode.title()}"
     }
 
 def detect_booking_or_action_intent(user_text):
     txt = user_text.lower()
     
-    # Universal Mobility Trigger (Train, Bus, Cab, Bike, Flight)
     transit_keywords = [
         "train", "irctc", "railway", "ticket book",
         "bus", "roadways", "redbus",
@@ -540,7 +560,7 @@ def detect_booking_or_action_intent(user_text):
             title = f"{icon} On-Demand Cab Dispatch: {from_c} ➔ {to_c}"
             link_url = f"https://m.uber.com/ul/?action=setPickup&pickup=my_location"
             btn_label = f"⚡ Dispatch Cab (Uber / Ola) to {to_c}"
-            desc = f"Instant cab options computed between {from_c} and {to_c}:"
+            desc = f"Instant cab fleet availability computed between {from_c} and {to_c}:"
         elif mode == "bike":
             icon = "🛵"
             title = f"{icon} Rapid Bike Taxi Allocator: {from_c} ➔ {to_c}"
