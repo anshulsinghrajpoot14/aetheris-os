@@ -4,6 +4,7 @@ import json
 import uuid
 import re
 import urllib.parse
+import random
 from pathlib import Path
 from datetime import datetime
 
@@ -45,10 +46,11 @@ except ImportError:
     requests = None
 
 try:
-    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.pagesizes import A4, letter
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.enums import TA_CENTER
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib import colors
     REPORTLAB_OK = True
 except ImportError:
     REPORTLAB_OK = False
@@ -199,7 +201,7 @@ if "attached_assets" not in st.session_state:
     st.session_state.attached_assets = []
 
 # ============================================================
-# 5. CORE ENGINES: COMPLIANCE, OCR, SEARCH, DATA & DISPATCH
+# 5. CORE ENGINES: COMPLIANCE, OCR, SEARCH, DATA & PASS DISPATCH
 # ============================================================
 def calculate_pf_ecr(df):
     records = []
@@ -317,6 +319,51 @@ def fetch_studio_asset_bytes(raw_subject):
             pass
     return image_url
 
+def generate_travel_boarding_pass(pnr, passenger_name, train_details, travel_class, seat_no, route):
+    if not REPORTLAB_OK:
+        return None
+    try:
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle(
+            'PassTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            leading=22,
+            textColor=colors.HexColor("#1A365D"),
+            alignment=1
+        )
+        
+        elements.append(Paragraph(f"{OS_NAME} // AUTONOMOUS MOBILITY MANIFEST", title_style))
+        elements.append(Spacer(1, 14))
+
+        data = [
+            ["PNR TOKEN", pnr, "TRAVEL STATUS", "CONFIRMED / PAID"],
+            ["PASSENGER", passenger_name.upper(), "CLASS / SEAT", f"{travel_class} | {seat_no}"],
+            ["ROUTE", route, "SERVICE / TRAIN", train_details],
+            ["ISSUED BY", f"{OS_NAME} Neural Core", "ARCHITECT", CREATOR_FULL_NAME.upper()]
+        ]
+
+        t = Table(data, colWidths=[130, 140, 130, 140])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#F8FAFC")),
+            ('GRID', (0,0), (-1,-1), 1, colors.HexColor("#CBD5E1")),
+            ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
+            ('FONTNAME', (2,0), (2,-1), 'Helvetica-Bold'),
+            ('TEXTCOLOR', (0,0), (-1,-1), colors.HexColor("#0F172A")),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('TOPPADDING', (0,0), (-1,-1), 8),
+        ]))
+        elements.append(t)
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer.getvalue()
+    except Exception:
+        return None
+
 def generate_pdf_report(title, content):
     if not REPORTLAB_OK:
         return None
@@ -406,7 +453,9 @@ def detect_booking_or_action_intent(user_text):
             "schedule": schedule_df,
             "desc": f"Direct timetable synced between {from_stn} and {to_stn}. Choose your train & verify seats:",
             "link": irctc_url,
-            "btn_label": f"⚡ Confirm Reservation on IRCTC ({from_stn} ➔ {to_stn})"
+            "btn_label": f"⚡ Confirm Reservation on IRCTC ({from_stn} ➔ {to_stn})",
+            "from_stn": from_stn,
+            "to_stn": to_stn
         }
     if any(k in txt for k in ["movie", "cinema", "film", "bookmyshow"]):
         movie_match = re.search(r'movie(?:\s+ticket)?(?:\s+for)?\s+([a-zA-Z0-9\s]+)', txt, re.IGNORECASE)
@@ -728,7 +777,7 @@ if user_prompt:
                     "mailto": mailto_link
                 })
 
-    # 5. Real Travel Schedule & Booking Matrix
+    # 5. Real Travel Schedule & Interactive Booking Matrix
     elif action_intent:
         with st.chat_message("assistant", avatar="🤖"):
             st.markdown(f"#### {action_intent['title']}")
@@ -737,6 +786,41 @@ if user_prompt:
                 st.dataframe(action_intent["schedule"], use_container_width=True)
             st.write(action_intent["desc"])
             st.link_button(action_intent["btn_label"], action_intent["link"], use_container_width=True)
+
+            if action_intent["type"] == "train":
+                with st.expander("🎫 Complete In-App Passenger Manifest & Seat Reservation", expanded=True):
+                    c_p1, c_p2 = st.columns(2)
+                    with c_p1:
+                        p_name = st.text_input("Passenger Full Name", value=CREATOR_FULL_NAME, key="p_name_input")
+                        p_age = st.number_input("Age", min_value=5, max_value=100, value=21, key="p_age_input")
+                    with c_p2:
+                        p_class = st.selectbox("Preferred Class", ["Executive Chair Car (EC)", "AC Chair Car (CC)", "AC 3-Tier (3A)", "AC 2-Tier (2A)"], key="p_class_input")
+                        p_berth = st.selectbox("Berth Preference", ["Window Side", "Aisle", "Lower", "No Preference"], key="p_berth_input")
+
+                    if st.button("Generate Confirmed Boarding Pass"):
+                        gen_pnr = f"ATH-{random.randint(100000, 999999)}"
+                        seat_token = f"C{random.randint(1, 6)}-{random.randint(11, 72)} ({p_berth})"
+                        route_name = f"{action_intent.get('from_stn', 'Jaipur')} ➔ {action_intent.get('to_stn', 'Delhi')}"
+                        
+                        pass_bytes = generate_travel_boarding_pass(
+                            pnr=gen_pnr,
+                            passenger_name=p_name,
+                            train_details="Ajmer - Delhi Cantt Vande Bharat",
+                            travel_class=p_class,
+                            seat_no=seat_token,
+                            route=route_name
+                        )
+
+                        st.success(f"Reservation Manifest Created! PNR: **{gen_pnr}** | Seat: **{seat_token}**")
+                        if pass_bytes:
+                            st.download_button(
+                                label="📥 Download Official Boarding Pass (PDF)",
+                                data=pass_bytes,
+                                file_name=f"Boarding_Pass_{gen_pnr}.pdf",
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+
             st.session_state.messages.append({
                 "role": "assistant",
                 "type": "action_card",
