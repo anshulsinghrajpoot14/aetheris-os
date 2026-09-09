@@ -257,14 +257,18 @@ def build_multi_page_docx(pages_text_list, doc_title="Canonical Deliverable"):
         for idx, page_content in enumerate(pages_text_list):
             if idx > 0:
                 doc.add_page_break()
-            if len(pages_text_list) > 1:
-                p_page = doc.add_paragraph()
-                r = p_page.add_run(f"--- PAGE {idx + 1} ---")
-                r.bold = True
-                r.font.size = Pt(9.5)
             for line in page_content.splitlines():
-                if line.strip():
-                    p = doc.add_paragraph(line.strip())
+                clean_l = line.strip()
+                if not clean_l:
+                    continue
+                if clean_l.startswith("# "):
+                    doc.add_heading(clean_l.replace("# ", "").strip(), level=2)
+                elif clean_l.startswith("## "):
+                    doc.add_heading(clean_l.replace("## ", "").strip(), level=3)
+                elif clean_l.startswith(("- ", "* ")):
+                    doc.add_paragraph(clean_l[2:].strip(), style='List Bullet')
+                else:
+                    p = doc.add_paragraph(clean_l)
                     p.style.font.name = 'Calibri'
                     p.style.font.size = Pt(11)
 
@@ -285,13 +289,14 @@ def build_executive_pdf(doc_title, text_content):
 
         t_style = ParagraphStyle("T", parent=styles["Title"], fontSize=14, alignment=TA_CENTER, textColor=colors.HexColor("#0f172a"))
         m_style = ParagraphStyle("M", parent=styles["Normal"], fontSize=8, alignment=TA_CENTER, textColor=colors.HexColor("#64748b"))
+        h_style = ParagraphStyle("H", parent=styles["Heading2"], fontSize=11, leading=15, spaceBefore=8, spaceAfter=4, textColor=colors.HexColor("#4338ca"))
         b_style = ParagraphStyle("B", parent=styles["Normal"], fontSize=9.5, leading=14, alignment=TA_JUSTIFY, textColor=colors.HexColor("#1e293b"), spaceAfter=5)
 
         story = [
-            Paragraph(f"<b>{OS_NAME.upper()} // ENTERPRISE MANIFEST</b>", m_style),
+            Paragraph(f"<b>{OS_NAME.upper()} // ACADEMIC & ENTERPRISE MANIFEST</b>", m_style),
             Spacer(1, 4),
             Paragraph(f"<b>{doc_title}</b>", t_style),
-            Paragraph(f"Architect: {CREATOR_FULL_NAME} • Verified • {datetime.now().strftime('%d %B %Y')}", m_style),
+            Paragraph(f"Architect: {CREATOR_FULL_NAME} • Verified Execution • {datetime.now().strftime('%d %B %Y')}", m_style),
             Spacer(1, 6),
             HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=10)
         ]
@@ -302,7 +307,12 @@ def build_executive_pdf(doc_title, text_content):
                 story.append(Spacer(1, 3))
                 continue
             safe = clean.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            story.append(Paragraph(safe, b_style))
+            if safe.startswith("#"):
+                story.append(Paragraph(f"<b>{safe.lstrip('#').strip()}</b>", h_style))
+            elif safe.startswith(("- ", "* ")):
+                story.append(Paragraph(f"• {safe[2:]}", b_style))
+            else:
+                story.append(Paragraph(safe, b_style))
 
         pdf.build(story)
         buf.seek(0)
@@ -311,7 +321,48 @@ def build_executive_pdf(doc_title, text_content):
         return None
 
 # ============================================================
-# 5. HEADER (FROZEN)
+# 5. ROBUST ACADEMIC LLM GENERATOR (GROQ + GEMINI FAILOVER)
+# ============================================================
+def execute_academic_engine(prompt_payload):
+    """Executes high-density text generation with reliable failover."""
+    # 1. Primary: Groq Llama 3.3 (Extended 30s timeout)
+    if GROQ_API_KEY and Groq:
+        try:
+            g_client = Groq(api_key=GROQ_API_KEY, timeout=30.0)
+            res = g_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt_payload}],
+                temperature=0.35,
+                max_tokens=3800
+            )
+            if res.choices and res.choices[0].message.content:
+                ans = res.choices[0].message.content.strip()
+                if len(ans) > 100:
+                    return ans
+        except Exception:
+            pass
+
+    # 2. Secondary Failover: Direct Gemini REST
+    if GEMINI_API_KEY and REQUESTS_OK:
+        try:
+            for m in ["gemini-1.5-flash", "gemini-1.5-pro"]:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={GEMINI_API_KEY}"
+                payload = {
+                    "contents": [{"parts": [{"text": prompt_payload}]}],
+                    "generationConfig": {"temperature": 0.35, "maxOutputTokens": 3800}
+                }
+                r = requests.post(url, json=payload, timeout=25)
+                if r.status_code == 200:
+                    txt = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    if txt and len(txt) > 100:
+                        return txt
+        except Exception:
+            pass
+
+    return None
+
+# ============================================================
+# 6. HEADER (FROZEN)
 # ============================================================
 st.markdown(
     f"""<div class="aetheris-header">
@@ -334,7 +385,7 @@ st.markdown(
 )
 
 # ============================================================
-# 6. SIDEBAR: 1:1 CONVERSION & EXACT UTILITIES (100% FROZEN)
+# 7. SIDEBAR: 1:1 CONVERSION & EXACT UTILITIES (100% FROZEN)
 # ============================================================
 with st.sidebar:
     st.markdown(f"**💠 {OS_NAME} MATRIX**")
@@ -430,7 +481,7 @@ with st.sidebar:
                 )
 
 # ============================================================
-# 7. MAIN AUTONOMOUS WORKSPACE WITH ACADEMIC & COGNITIVE MODES
+# 8. MAIN TABS (COGNITIVE CHAT + ACADEMIC MATRIX)
 # ============================================================
 main_tab_chat, main_tab_academic = st.tabs([
     "💬 Autonomous Cognitive Workspace", 
@@ -488,22 +539,9 @@ with main_tab_chat:
             )
 
             full_prompt = f"{system_instruction}{context_block}\n\nUser: {user_query}"
-
-            out_response = ""
-            if GROQ_API_KEY and Groq:
-                try:
-                    g_client = Groq(api_key=GROQ_API_KEY, timeout=14.0)
-                    res = g_client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[{"role": "user", "content": full_prompt}],
-                        temperature=0.3
-                    )
-                    out_response = res.choices[0].message.content.strip()
-                except Exception:
-                    pass
-
+            out_response = execute_academic_engine(full_prompt)
             if not out_response:
-                out_response = f"I am {OS_NAME}, engineered by {CREATOR_FULL_NAME}. Command received."
+                out_response = f"I am {OS_NAME}, engineered by {CREATOR_FULL_NAME}. Command processed."
 
             st.markdown(out_response)
 
@@ -538,82 +576,114 @@ with main_tab_chat:
             })
 
 # ------------------------------------------------------------
-# TAB 2: ACADEMIC & EXAMINATION INTELLIGENCE MATRIX (NEW MODULE)
+# TAB 2: ACADEMIC & EXAMINATION INTELLIGENCE MATRIX (ALL LEVELS)
 # ------------------------------------------------------------
 with main_tab_academic:
     st.markdown("### 🎓 Academic & Examination Intelligence Matrix")
-    st.caption("Deconstruct exam patterns, generate high-probability mock tests, or compile comprehensive revision blueprints.")
+    st.caption("Universal Learning Engine: 9th-12th Boards, CBSE/State, NEET/JEE, SSC, UGC NET, UPSC, MBA/MCA & University Exams.")
 
-    c_ac1, c_ac2 = st.columns([2, 1])
-    with c_ac1:
-        target_exam = st.text_input("Target Exam / Subject / Chapter", placeholder="e.g. UGC NET Paper 1, SSC CGL Reasoning, Modern Indian History, Geography...")
-    with c_ac2:
-        operation_mode = st.selectbox("Intelligence Mode", [
-            "Full Syllabus & Weightage Deconstruction",
-            "High-Yield Mock Test (MCQs + Explanations)",
-            "Master Revision Blueprint & Core Notes"
-        ])
+    col_target, col_tier, col_mode = st.columns([2, 1, 1])
+    
+    with col_target:
+        target_subject = st.text_input(
+            "Target Subject / Chapter / Exam Name",
+            placeholder="e.g. 10th Science Electricity, 12th Physics Optics, NEET Biology Genetics, UGC NET Paper 1, Modern Indian History 1857..."
+        )
+    with col_tier:
+        academic_tier = st.selectbox(
+            "Academic Tier",
+            [
+                "Class 9th & 10th (Board Standards)",
+                "Class 11th & 12th (Senior Secondary)",
+                "NEET / JEE / Engineering & Medical",
+                "Graduation / PG / MBA / MCA Exams",
+                "UGC NET / State PCS / UPSC / SSC"
+            ]
+        )
+    with col_mode:
+        action_mode = st.selectbox(
+            "Delivery Format",
+            [
+                "Exhaustive Chapter Notes & Blueprint",
+                "Authentic Exam Question Paper & Solutions",
+                "High-Yield Mock Test (MCQs + Explanations)",
+                "Master Revision Blueprint & Formula Sheet"
+            ]
+        )
 
-    diff_level = st.select_slider("Difficulty / Standard", options=["Standard Foundation", "Moderate Competitive", "Advanced / Exam-Grade"])
+    lang_pref = st.radio("Language / Medium", ["Bilingual (Hindi + English)", "Pure English", "Pure Hindi (हिंदी)"], horizontal=True)
 
-    if st.button("⚡ Execute Academic Matrix", use_container_width=True):
-        if not target_exam.strip():
-            st.warning("Please enter a target exam, topic, or subject name.")
+    if st.button("⚡ Generate Exhaustive Academic Manifest", use_container_width=True):
+        if not target_subject.strip():
+            st.warning("Please enter a subject, chapter, or exam name.")
         else:
-            with st.spinner(f"Synthesizing academic intelligence for: {target_exam}..."):
-                acad_prompt = f"""
+            with st.spinner(f"Compiling comprehensive {academic_tier} material for: {target_subject}..."):
+                deep_prompt = f"""
                 You are the Academic & Examination Intelligence Matrix of {OS_NAME}, engineered by {CREATOR_FULL_NAME}.
-                Target Subject / Examination: "{target_exam}"
-                Selected Mode: "{operation_mode}"
-                Difficulty Level: "{diff_level}"
+                You are a senior master professor and exam paper setter.
 
-                Execute this request with maximum academic rigor:
-                - If 'Full Syllabus & Weightage Deconstruction': Break down the core units, high-scoring micro-topics, recurring trends, and 60-day strategic roadmap.
-                - If 'High-Yield Mock Test': Generate 5 to 10 authentic, challenging exam-grade questions with 4 distinct options, clearly marked correct answers, and thorough conceptual explanations.
-                - If 'Master Revision Blueprint': Provide crisp bullet points, key facts/theories, dates/formulas, and common pitfalls to avoid.
+                INPUT PARAMETERS:
+                - Target: "{target_subject}"
+                - Academic Tier: "{academic_tier}"
+                - Format: "{action_mode}"
+                - Language Medium: "{lang_pref}"
 
-                Format with clean headings, bold keywords, and professional academic structure.
+                INSTRUCTIONS FOR COMPREHENSIVE OUTPUT:
+                You MUST deliver a COMPLETE, MULTI-PAGE EXHAUSTIVE DELIVERABLE. Never return brief summaries or 1-line fallbacks.
+
+                1. If 'Exhaustive Chapter Notes & Blueprint':
+                   - Complete Chapter Blueprint (Marks weightage & key sections).
+                   - Detailed Concept Breakdown with in-depth definitions, principles, and diagrams/steps explained.
+                   - Solved Examples / Key Historical or Scientific Evidence.
+                   - Common Exam Mistakes to avoid.
+
+                2. If 'Authentic Exam Question Paper & Solutions':
+                   - Structured Paper (Section A: Very Short/Objective, Section B: Short 3-Marks, Section C: Long Analytical 5-Marks).
+                   - Full detailed Step-by-Step Marking Scheme & Answers for every single question.
+
+                3. If 'High-Yield Mock Test (MCQs + Explanations)':
+                   - 10 Authentic, challenging exam-grade MCQs with 4 options (A, B, C, D).
+                   - Detailed Answer Key and in-depth conceptual explanation for every question.
+
+                4. If 'Master Revision Blueprint & Formula Sheet':
+                   - High-Yield Key Points & Core Formulas.
+                   - Chronology/Timelines or Reaction Mechanisms.
+                   - Rapid 15-Minute Pre-Exam Checklist.
+
+                Format with clean headings (##, ###), bullet points, bold key terms, and professional academic structure.
                 """
 
-                academic_result = ""
-                if GROQ_API_KEY and Groq:
-                    try:
-                        g_client = Groq(api_key=GROQ_API_KEY, timeout=16.0)
-                        res = g_client.chat.completions.create(
-                            model="llama-3.3-70b-versatile",
-                            messages=[{"role": "user", "content": acad_prompt}],
-                            temperature=0.35,
-                            max_tokens=2500
-                        )
-                        academic_result = res.choices[0].message.content.strip()
-                    except Exception:
-                        pass
+                academic_content = execute_academic_engine(deep_prompt)
 
-                if not academic_result:
-                    academic_result = f"Academic synthesis for {target_exam} completed."
+                if not academic_content:
+                    academic_content = (
+                        f"# Academic Matrix: {target_subject}\n\n"
+                        f"## Tier: {academic_tier} | Format: {action_mode}\n\n"
+                        f"System synthesized academic blueprint. Please execute again for deep expansion."
+                    )
 
-                st.markdown(academic_result)
+                st.markdown(academic_content)
 
-                # Instant Exportable Academic Deliverables
-                acad_docx = build_multi_page_docx([academic_result], doc_title=f"Academic Matrix - {target_exam}")
-                acad_pdf = build_executive_pdf(f"Academic Matrix: {target_exam}", academic_result)
+                # Export Multi-page Deliverables
+                acad_docx = build_multi_page_docx([academic_content], doc_title=f"{target_subject} - {academic_tier}")
+                acad_pdf = build_executive_pdf(f"{target_subject} ({academic_tier})", academic_content)
 
-                c_d1, c_d2 = st.columns(2)
+                c_down1, c_down2 = st.columns(2)
                 if acad_docx:
-                    with c_d1:
+                    with c_down1:
                         st.download_button(
                             "📥 Download Study Manifest (.docx)",
                             acad_docx,
-                            file_name=f"{target_exam.replace(' ', '_')}_Manifest.docx",
+                            file_name=f"{target_subject.replace(' ', '_')}_Notes.docx",
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                             use_container_width=True
                         )
                 if acad_pdf:
-                    with c_d2:
+                    with c_down2:
                         st.download_button(
                             "📥 Download Study Manifest (.pdf)",
                             acad_pdf,
-                            file_name=f"{target_exam.replace(' ', '_')}_Manifest.pdf",
+                            file_name=f"{target_subject.replace(' ', '_')}_Notes.pdf",
                             mime="application/pdf",
                             use_container_width=True
                         )
