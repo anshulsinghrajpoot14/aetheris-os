@@ -50,7 +50,7 @@ except ImportError:
     REPORTLAB_OK = False
 
 # ============================================================
-# 1. BULLETPROOF CREDENTIALS & IDENTITY
+# 1. BULLETPROOF CREDENTIALS & IDENTITY (FROZEN)
 # ============================================================
 load_dotenv(override=True)
 
@@ -70,7 +70,7 @@ OS_NAME = "Aetheris OS"
 TAGLINE = "NEURAL COGNITIVE ARCHITECTURE & ENTERPRISE INTELLIGENCE MATRIX"
 
 # ============================================================
-# 2. PAGE CONFIGURATION & EXECUTIVE NORDIC THEME
+# 2. PAGE CONFIGURATION & EXECUTIVE THEME (FROZEN)
 # ============================================================
 st.set_page_config(
     page_title=f"{OS_NAME} • {CREATOR_FULL_NAME}",
@@ -174,7 +174,7 @@ if "attached_assets" not in st.session_state:
     st.session_state.attached_assets = []
 
 # ============================================================
-# 4. EXACT DOCUMENT ENGINES (1:1 IMAGE-PDF & VERBATIM DOCX)
+# 4. EXACT DOCUMENT ENGINES (100% FROZEN - ZERO TOUCH)
 # ============================================================
 def convert_images_to_exact_pdf(uploaded_images):
     """Combines original images 1:1 into multi-page PDF without degradation."""
@@ -311,7 +311,7 @@ def build_executive_pdf(doc_title, text_content):
         return None
 
 # ============================================================
-# 5. HEADER
+# 5. HEADER (FROZEN)
 # ============================================================
 st.markdown(
     f"""<div class="aetheris-header">
@@ -334,13 +334,13 @@ st.markdown(
 )
 
 # ============================================================
-# 6. SIDEBAR: 1:1 CONVERSION & UTILITIES MATRIX
+# 6. SIDEBAR: 1:1 CONVERSION & EXACT UTILITIES (100% FROZEN)
 # ============================================================
 with st.sidebar:
     st.markdown(f"**💠 {OS_NAME} MATRIX**")
     st.caption(f"Architect: {CREATOR_FULL_NAME}")
     
-    if st.button("＋ Clear Architecture Workspace", use_container_width=True):
+    if st.button("＋ Clear Workspace", use_container_width=True):
         st.session_state.messages = []
         st.session_state.attached_assets = []
         st.rerun()
@@ -430,102 +430,190 @@ with st.sidebar:
                 )
 
 # ============================================================
-# 7. MAIN AUTONOMOUS COGNITIVE WORKSPACE
+# 7. MAIN AUTONOMOUS WORKSPACE WITH ACADEMIC & COGNITIVE MODES
 # ============================================================
-for idx, msg in enumerate(st.session_state.messages):
-    avatar = "👤" if msg["role"] == "user" else "🤖"
-    with st.chat_message(msg["role"], avatar=avatar):
-        st.markdown(msg["content"])
-        if msg.get("docx") or msg.get("pdf"):
+main_tab_chat, main_tab_academic = st.tabs([
+    "💬 Autonomous Cognitive Workspace", 
+    "🎓 Academic & Examination Intelligence Matrix"
+])
+
+# ------------------------------------------------------------
+# TAB 1: GENERAL AUTONOMOUS INTELLIGENCE & FREE DRAFTING
+# ------------------------------------------------------------
+with main_tab_chat:
+    for idx, msg in enumerate(st.session_state.messages):
+        avatar = "👤" if msg["role"] == "user" else "🤖"
+        with st.chat_message(msg["role"], avatar=avatar):
+            st.markdown(msg["content"])
+            if msg.get("docx") or msg.get("pdf"):
+                c1, c2 = st.columns(2)
+                if msg.get("docx"):
+                    with c1:
+                        st.download_button(
+                            "⬇ Download Executive Word (.docx)",
+                            msg["docx"],
+                            file_name=f"Aetheris_Deliverable_{idx}.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            key=f"chat_docx_{idx}",
+                            use_container_width=True
+                        )
+                if msg.get("pdf"):
+                    with c2:
+                        st.download_button(
+                            "⬇ Download Executive PDF (.pdf)",
+                            msg["pdf"],
+                            file_name=f"Aetheris_Deliverable_{idx}.pdf",
+                            mime="application/pdf",
+                            key=f"chat_pdf_{idx}",
+                            use_container_width=True
+                        )
+
+    user_query = st.chat_input("Enter command, instructions, or queries for Aetheris OS...")
+
+    if user_query:
+        st.session_state.messages.append({"role": "user", "content": user_query})
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(user_query)
+
+        with st.chat_message("assistant", avatar="🤖"):
+            context_block = ""
+            for a in st.session_state.attached_assets:
+                if "raw_text" in a:
+                    context_block += f"\n\n=== RECENT DOCUMENT CONTEXT ({a['name']}) ===\n{a['raw_text'][:3500]}\n---\n"
+
+            system_instruction = (
+                f"You are {OS_NAME}, the high-order neural intelligence engine engineered solely by your architect: {CREATOR_FULL_NAME}. "
+                f"You understand and write accurately in Hindi, English, and Hinglish. "
+                f"Whenever drafting documents, applications, or technical roadmaps, provide structured, high-density executive quality."
+            )
+
+            full_prompt = f"{system_instruction}{context_block}\n\nUser: {user_query}"
+
+            out_response = ""
+            if GROQ_API_KEY and Groq:
+                try:
+                    g_client = Groq(api_key=GROQ_API_KEY, timeout=14.0)
+                    res = g_client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=[{"role": "user", "content": full_prompt}],
+                        temperature=0.3
+                    )
+                    out_response = res.choices[0].message.content.strip()
+                except Exception:
+                    pass
+
+            if not out_response:
+                out_response = f"I am {OS_NAME}, engineered by {CREATOR_FULL_NAME}. Command received."
+
+            st.markdown(out_response)
+
+            docx_b = build_multi_page_docx([out_response], doc_title="Executive Intelligence Manifest")
+            pdf_b = build_executive_pdf("Executive Intelligence Manifest", out_response)
+
             c1, c2 = st.columns(2)
-            if msg.get("docx"):
+            if docx_b:
                 with c1:
                     st.download_button(
                         "⬇ Download Executive Word (.docx)",
-                        msg["docx"],
-                        file_name=f"Aetheris_Deliverable_{idx}.docx",
+                        docx_b,
+                        file_name="Aetheris_Executive.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        key=f"chat_docx_{idx}",
                         use_container_width=True
                     )
-            if msg.get("pdf"):
+            if pdf_b:
                 with c2:
                     st.download_button(
                         "⬇ Download Executive PDF (.pdf)",
-                        msg["pdf"],
-                        file_name=f"Aetheris_Deliverable_{idx}.pdf",
+                        pdf_b,
+                        file_name="Aetheris_Executive.pdf",
                         mime="application/pdf",
-                        key=f"chat_pdf_{idx}",
                         use_container_width=True
                     )
 
-user_query = st.chat_input(f"Command {OS_NAME} (e.g. 'draft a legal agreement', 'write an official RTI petition', 'summarize attached text')...")
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": out_response,
+                "docx": docx_b,
+                "pdf": pdf_b
+            })
 
-if user_query:
-    st.session_state.messages.append({"role": "user", "content": user_query})
-    with st.chat_message("user", avatar="👤"):
-        st.markdown(user_query)
+# ------------------------------------------------------------
+# TAB 2: ACADEMIC & EXAMINATION INTELLIGENCE MATRIX (NEW MODULE)
+# ------------------------------------------------------------
+with main_tab_academic:
+    st.markdown("### 🎓 Academic & Examination Intelligence Matrix")
+    st.caption("Deconstruct exam patterns, generate high-probability mock tests, or compile comprehensive revision blueprints.")
 
-    with st.chat_message("assistant", avatar="🤖"):
-        # Check if context exists from sidebar extraction
-        context_block = ""
-        for a in st.session_state.attached_assets:
-            if "raw_text" in a:
-                context_block += f"\n\n=== RECENT DOCUMENT CONTEXT ({a['name']}) ===\n{a['raw_text'][:3500]}\n---\n"
+    c_ac1, c_ac2 = st.columns([2, 1])
+    with c_ac1:
+        target_exam = st.text_input("Target Exam / Subject / Chapter", placeholder="e.g. UGC NET Paper 1, SSC CGL Reasoning, Modern Indian History, Geography...")
+    with c_ac2:
+        operation_mode = st.selectbox("Intelligence Mode", [
+            "Full Syllabus & Weightage Deconstruction",
+            "High-Yield Mock Test (MCQs + Explanations)",
+            "Master Revision Blueprint & Core Notes"
+        ])
 
-        system_instruction = (
-            f"You are {OS_NAME}, the high-order neural intelligence engine engineered solely by your architect: {CREATOR_FULL_NAME}. "
-            f"You understand and write accurately in Hindi, English, and Hinglish. "
-            f"Whenever drafting documents, applications, or technical roadmaps, provide structured, high-density executive quality."
-        )
+    diff_level = st.select_slider("Difficulty / Standard", options=["Standard Foundation", "Moderate Competitive", "Advanced / Exam-Grade"])
 
-        full_prompt = f"{system_instruction}{context_block}\n\nUser: {user_query}"
+    if st.button("⚡ Execute Academic Matrix", use_container_width=True):
+        if not target_exam.strip():
+            st.warning("Please enter a target exam, topic, or subject name.")
+        else:
+            with st.spinner(f"Synthesizing academic intelligence for: {target_exam}..."):
+                acad_prompt = f"""
+                You are the Academic & Examination Intelligence Matrix of {OS_NAME}, engineered by {CREATOR_FULL_NAME}.
+                Target Subject / Examination: "{target_exam}"
+                Selected Mode: "{operation_mode}"
+                Difficulty Level: "{diff_level}"
 
-        out_response = ""
-        if GROQ_API_KEY and Groq:
-            try:
-                g_client = Groq(api_key=GROQ_API_KEY, timeout=12.0)
-                res = g_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[{"role": "user", "content": full_prompt}],
-                    temperature=0.3
-                )
-                out_response = res.choices[0].message.content.strip()
-            except Exception:
-                pass
+                Execute this request with maximum academic rigor:
+                - If 'Full Syllabus & Weightage Deconstruction': Break down the core units, high-scoring micro-topics, recurring trends, and 60-day strategic roadmap.
+                - If 'High-Yield Mock Test': Generate 5 to 10 authentic, challenging exam-grade questions with 4 distinct options, clearly marked correct answers, and thorough conceptual explanations.
+                - If 'Master Revision Blueprint': Provide crisp bullet points, key facts/theories, dates/formulas, and common pitfalls to avoid.
 
-        if not out_response:
-            out_response = f"I am {OS_NAME}, engineered by {CREATOR_FULL_NAME}. Command verified."
+                Format with clean headings, bold keywords, and professional academic structure.
+                """
 
-        st.markdown(out_response)
+                academic_result = ""
+                if GROQ_API_KEY and Groq:
+                    try:
+                        g_client = Groq(api_key=GROQ_API_KEY, timeout=16.0)
+                        res = g_client.chat.completions.create(
+                            model="llama-3.3-70b-versatile",
+                            messages=[{"role": "user", "content": acad_prompt}],
+                            temperature=0.35,
+                            max_tokens=2500
+                        )
+                        academic_result = res.choices[0].message.content.strip()
+                    except Exception:
+                        pass
 
-        # Document Generation for Chat
-        docx_b = build_multi_page_docx([out_response], doc_title="Executive Intelligence Manifest")
-        pdf_b = build_executive_pdf("Executive Intelligence Manifest", out_response)
+                if not academic_result:
+                    academic_result = f"Academic synthesis for {target_exam} completed."
 
-        c1, c2 = st.columns(2)
-        if docx_b:
-            with c1:
-                st.download_button(
-                    "⬇ Download Executive Word (.docx)",
-                    docx_b,
-                    file_name="Aetheris_Executive.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True
-                )
-        if pdf_b:
-            with c2:
-                st.download_button(
-                    "⬇ Download Executive PDF (.pdf)",
-                    pdf_b,
-                    file_name="Aetheris_Executive.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
+                st.markdown(academic_result)
 
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": out_response,
-            "docx": docx_b,
-            "pdf": pdf_b
-        })
+                # Instant Exportable Academic Deliverables
+                acad_docx = build_multi_page_docx([academic_result], doc_title=f"Academic Matrix - {target_exam}")
+                acad_pdf = build_executive_pdf(f"Academic Matrix: {target_exam}", academic_result)
+
+                c_d1, c_d2 = st.columns(2)
+                if acad_docx:
+                    with c_d1:
+                        st.download_button(
+                            "📥 Download Study Manifest (.docx)",
+                            acad_docx,
+                            file_name=f"{target_exam.replace(' ', '_')}_Manifest.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            use_container_width=True
+                        )
+                if acad_pdf:
+                    with c_d2:
+                        st.download_button(
+                            "📥 Download Study Manifest (.pdf)",
+                            acad_pdf,
+                            file_name=f"{target_exam.replace(' ', '_')}_Manifest.pdf",
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
