@@ -177,7 +177,6 @@ if "attached_assets" not in st.session_state:
 # 4. EXACT DOCUMENT ENGINES (100% FROZEN - ZERO TOUCH)
 # ============================================================
 def convert_images_to_exact_pdf(uploaded_images):
-    """Combines original images 1:1 into multi-page PDF without degradation."""
     try:
         pil_images = []
         for img_file in uploaded_images:
@@ -197,7 +196,6 @@ def convert_images_to_exact_pdf(uploaded_images):
         return None
 
 def extract_verbatim_ocr(image_bytes, mime_type="image/jpeg"):
-    """Extracts raw text verbatim in Hindi/Sanskrit/English."""
     prompt = (
         "Extract and transcribe all text from this image VERBATIM. "
         "Preserve original language (Hindi, Sanskrit, English), exact lines, numbers, and layout. "
@@ -262,9 +260,11 @@ def build_multi_page_docx(pages_text_list, doc_title="Canonical Deliverable"):
                 if not clean_l:
                     continue
                 if clean_l.startswith("# "):
-                    doc.add_heading(clean_l.replace("# ", "").strip(), level=2)
+                    doc.add_heading(clean_l.replace("# ", "").strip(), level=1)
                 elif clean_l.startswith("## "):
-                    doc.add_heading(clean_l.replace("## ", "").strip(), level=3)
+                    doc.add_heading(clean_l.replace("## ", "").strip(), level=2)
+                elif clean_l.startswith("### "):
+                    doc.add_heading(clean_l.replace("### ", "").strip(), level=3)
                 elif clean_l.startswith(("- ", "* ")):
                     doc.add_paragraph(clean_l[2:].strip(), style='List Bullet')
                 else:
@@ -289,14 +289,15 @@ def build_executive_pdf(doc_title, text_content):
 
         t_style = ParagraphStyle("T", parent=styles["Title"], fontSize=14, alignment=TA_CENTER, textColor=colors.HexColor("#0f172a"))
         m_style = ParagraphStyle("M", parent=styles["Normal"], fontSize=8, alignment=TA_CENTER, textColor=colors.HexColor("#64748b"))
-        h_style = ParagraphStyle("H", parent=styles["Heading2"], fontSize=11, leading=15, spaceBefore=8, spaceAfter=4, textColor=colors.HexColor("#4338ca"))
+        h1_style = ParagraphStyle("H1", parent=styles["Heading1"], fontSize=12, leading=16, spaceBefore=10, spaceAfter=4, textColor=colors.HexColor("#312e81"))
+        h2_style = ParagraphStyle("H2", parent=styles["Heading2"], fontSize=10.5, leading=14, spaceBefore=8, spaceAfter=4, textColor=colors.HexColor("#4338ca"))
         b_style = ParagraphStyle("B", parent=styles["Normal"], fontSize=9.5, leading=14, alignment=TA_JUSTIFY, textColor=colors.HexColor("#1e293b"), spaceAfter=5)
 
         story = [
             Paragraph(f"<b>{OS_NAME.upper()} // ACADEMIC & ENTERPRISE MANIFEST</b>", m_style),
             Spacer(1, 4),
             Paragraph(f"<b>{doc_title}</b>", t_style),
-            Paragraph(f"Architect: {CREATOR_FULL_NAME} • Verified Execution • {datetime.now().strftime('%d %B %Y')}", m_style),
+            Paragraph(f"Architect: {CREATOR_FULL_NAME} • Comprehensive Publication • {datetime.now().strftime('%d %B %Y')}", m_style),
             Spacer(1, 6),
             HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=10)
         ]
@@ -307,8 +308,12 @@ def build_executive_pdf(doc_title, text_content):
                 story.append(Spacer(1, 3))
                 continue
             safe = clean.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            if safe.startswith("#"):
-                story.append(Paragraph(f"<b>{safe.lstrip('#').strip()}</b>", h_style))
+            if safe.startswith("# "):
+                story.append(Paragraph(f"<b>{safe.replace('# ', '').strip()}</b>", h1_style))
+            elif safe.startswith("## "):
+                story.append(Paragraph(f"<b>{safe.replace('## ', '').strip()}</b>", h2_style))
+            elif safe.startswith("### "):
+                story.append(Paragraph(f"<b>{safe.replace('### ', '').strip()}</b>", h2_style))
             elif safe.startswith(("- ", "* ")):
                 story.append(Paragraph(f"• {safe[2:]}", b_style))
             else:
@@ -321,45 +326,45 @@ def build_executive_pdf(doc_title, text_content):
         return None
 
 # ============================================================
-# 5. ROBUST ACADEMIC LLM GENERATOR (GROQ + GEMINI FAILOVER)
+# 5. ROBUST LLM CALL FUNCTION
 # ============================================================
-def execute_academic_engine(prompt_payload):
-    """Executes high-density text generation with reliable failover."""
-    # 1. Primary: Groq Llama 3.3 (Extended 30s timeout)
+def call_single_section(system_instr, user_prompt, max_tokens=1800):
     if GROQ_API_KEY and Groq:
         try:
-            g_client = Groq(api_key=GROQ_API_KEY, timeout=30.0)
+            g_client = Groq(api_key=GROQ_API_KEY, timeout=40.0)
             res = g_client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt_payload}],
-                temperature=0.35,
-                max_tokens=3800
+                messages=[
+                    {"role": "system", "content": system_instr},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.3,
+                max_tokens=max_tokens
             )
             if res.choices and res.choices[0].message.content:
-                ans = res.choices[0].message.content.strip()
-                if len(ans) > 100:
-                    return ans
+                txt = res.choices[0].message.content.strip()
+                if len(txt) > 80:
+                    return txt
         except Exception:
             pass
 
-    # 2. Secondary Failover: Direct Gemini REST
     if GEMINI_API_KEY and REQUESTS_OK:
         try:
             for m in ["gemini-1.5-flash", "gemini-1.5-pro"]:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={GEMINI_API_KEY}"
                 payload = {
-                    "contents": [{"parts": [{"text": prompt_payload}]}],
-                    "generationConfig": {"temperature": 0.35, "maxOutputTokens": 3800}
+                    "contents": [{"parts": [{"text": f"{system_instr}\n\n{user_prompt}"}]}],
+                    "generationConfig": {"temperature": 0.3, "maxOutputTokens": max_tokens}
                 }
-                r = requests.post(url, json=payload, timeout=25)
+                r = requests.post(url, json=payload, timeout=30)
                 if r.status_code == 200:
                     txt = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                    if txt and len(txt) > 100:
+                    if txt and len(txt) > 80:
                         return txt
         except Exception:
             pass
 
-    return None
+    return ""
 
 # ============================================================
 # 6. HEADER (FROZEN)
@@ -409,10 +414,8 @@ with st.sidebar:
 
     if multi_files:
         st.info(f"Loaded {len(multi_files)} document asset(s).")
-        
         c_act1, c_act2 = st.columns(2)
         
-        # 1:1 Exact Photocopy PDF
         with c_act1:
             if st.button("📄 Exact PDF", use_container_width=True):
                 img_files = [f for f in multi_files if Path(f.name).suffix.lower() in [".png", ".jpg", ".jpeg"]]
@@ -428,7 +431,6 @@ with st.sidebar:
                 else:
                     st.warning("Upload JPG/PNG images.")
 
-        # Verbatim Word Multi-page
         with c_act2:
             if st.button("📝 Exact Word", use_container_width=True):
                 pages_extracted = []
@@ -455,30 +457,15 @@ with st.sidebar:
                             })
                             st.success("Word Document Built!")
 
-    # Active Deliverables in Sidebar
     if st.session_state.attached_assets:
         st.divider()
         st.markdown("**📁 Sidebar Deliverables:**")
         for idx, ast_item in enumerate(st.session_state.attached_assets):
             st.markdown(f"**{ast_item['name']}**")
             if "pdf" in ast_item and ast_item["pdf"]:
-                st.download_button(
-                    "⬇ Download PDF",
-                    ast_item["pdf"],
-                    file_name=ast_item["name"],
-                    mime="application/pdf",
-                    key=f"side_pdf_{idx}",
-                    use_container_width=True
-                )
+                st.download_button("⬇ Download PDF", ast_item["pdf"], file_name=ast_item["name"], mime="application/pdf", key=f"side_pdf_{idx}", use_container_width=True)
             if "docx" in ast_item and ast_item["docx"]:
-                st.download_button(
-                    "⬇ Download Word (.docx)",
-                    ast_item["docx"],
-                    file_name=ast_item["name"],
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    key=f"side_docx_{idx}",
-                    use_container_width=True
-                )
+                st.download_button("⬇ Download Word (.docx)", ast_item["docx"], file_name=ast_item["name"], mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"side_docx_{idx}", use_container_width=True)
 
 # ============================================================
 # 8. MAIN TABS (COGNITIVE CHAT + ACADEMIC MATRIX)
@@ -499,25 +486,9 @@ with main_tab_chat:
             if msg.get("docx") or msg.get("pdf"):
                 c1, c2 = st.columns(2)
                 if msg.get("docx"):
-                    with c1:
-                        st.download_button(
-                            "⬇ Download Executive Word (.docx)",
-                            msg["docx"],
-                            file_name=f"Aetheris_Deliverable_{idx}.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            key=f"chat_docx_{idx}",
-                            use_container_width=True
-                        )
+                    st.download_button("⬇ Download Executive Word (.docx)", msg["docx"], file_name=f"Aetheris_Deliverable_{idx}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"chat_docx_{idx}", use_container_width=True)
                 if msg.get("pdf"):
-                    with c2:
-                        st.download_button(
-                            "⬇ Download Executive PDF (.pdf)",
-                            msg["pdf"],
-                            file_name=f"Aetheris_Deliverable_{idx}.pdf",
-                            mime="application/pdf",
-                            key=f"chat_pdf_{idx}",
-                            use_container_width=True
-                        )
+                    st.download_button("⬇ Download Executive PDF (.pdf)", msg["pdf"], file_name=f"Aetheris_Deliverable_{idx}.pdf", mime="application/pdf", key=f"chat_pdf_{idx}", use_container_width=True)
 
     user_query = st.chat_input("Enter command, instructions, or queries for Aetheris OS...")
 
@@ -534,156 +505,152 @@ with main_tab_chat:
 
             system_instruction = (
                 f"You are {OS_NAME}, the high-order neural intelligence engine engineered solely by your architect: {CREATOR_FULL_NAME}. "
-                f"You understand and write accurately in Hindi, English, and Hinglish. "
-                f"Whenever drafting documents, applications, or technical roadmaps, provide structured, high-density executive quality."
+                f"You understand and write accurately in Hindi, English, and Hinglish. Provide structured, exhaustive content."
             )
-
-            full_prompt = f"{system_instruction}{context_block}\n\nUser: {user_query}"
-            out_response = execute_academic_engine(full_prompt)
+            full_prompt = f"{context_block}\n\nUser Request: {user_query}"
+            out_response = call_single_section(system_instruction, full_prompt, max_tokens=2200)
             if not out_response:
-                out_response = f"I am {OS_NAME}, engineered by {CREATOR_FULL_NAME}. Command processed."
+                out_response = f"I am {OS_NAME}, engineered by {CREATOR_FULL_NAME}. Command received."
 
             st.markdown(out_response)
-
             docx_b = build_multi_page_docx([out_response], doc_title="Executive Intelligence Manifest")
             pdf_b = build_executive_pdf("Executive Intelligence Manifest", out_response)
 
             c1, c2 = st.columns(2)
             if docx_b:
                 with c1:
-                    st.download_button(
-                        "⬇ Download Executive Word (.docx)",
-                        docx_b,
-                        file_name="Aetheris_Executive.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        use_container_width=True
-                    )
+                    st.download_button("⬇ Download Word (.docx)", docx_b, file_name="Aetheris_Executive.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
             if pdf_b:
                 with c2:
-                    st.download_button(
-                        "⬇ Download Executive PDF (.pdf)",
-                        pdf_b,
-                        file_name="Aetheris_Executive.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
+                    st.download_button("⬇ Download PDF (.pdf)", pdf_b, file_name="Aetheris_Executive.pdf", mime="application/pdf", use_container_width=True)
 
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": out_response,
-                "docx": docx_b,
-                "pdf": pdf_b
-            })
+            st.session_state.messages.append({"role": "assistant", "content": out_response, "docx": docx_b, "pdf": pdf_b})
 
 # ------------------------------------------------------------
-# TAB 2: ACADEMIC & EXAMINATION INTELLIGENCE MATRIX (ALL LEVELS)
+# TAB 2: MULTI-PAGE DEEP ACADEMIC ENGINE (6-10 PAGES COMPLETE)
 # ------------------------------------------------------------
 with main_tab_academic:
     st.markdown("### 🎓 Academic & Examination Intelligence Matrix")
-    st.caption("Universal Learning Engine: 9th-12th Boards, CBSE/State, NEET/JEE, SSC, UGC NET, UPSC, MBA/MCA & University Exams.")
+    st.caption("Universal Multi-Page Publisher: 9th-12th Boards, NEET/JEE, SSC, UGC NET, UPSC, College & Professional Degree Courses.")
 
-    col_target, col_tier, col_mode = st.columns([2, 1, 1])
-    
+    col_target, col_tier = st.columns([2, 1])
     with col_target:
         target_subject = st.text_input(
-            "Target Subject / Chapter / Exam Name",
-            placeholder="e.g. 10th Science Electricity, 12th Physics Optics, NEET Biology Genetics, UGC NET Paper 1, Modern Indian History 1857..."
+            "Target Subject / Chapter / Exam Topic",
+            placeholder="e.g. 10th Science Acid Bases and Salts, 12th Physics Optics, NEET Biology Genetics, UGC NET Paper 1..."
         )
     with col_tier:
         academic_tier = st.selectbox(
-            "Academic Tier",
+            "Target Standard / Level",
             [
-                "Class 9th & 10th (Board Standards)",
+                "Class 9th & 10th (Secondary Boards)",
                 "Class 11th & 12th (Senior Secondary)",
-                "NEET / JEE / Engineering & Medical",
-                "Graduation / PG / MBA / MCA Exams",
-                "UGC NET / State PCS / UPSC / SSC"
-            ]
-        )
-    with col_mode:
-        action_mode = st.selectbox(
-            "Delivery Format",
-            [
-                "Exhaustive Chapter Notes & Blueprint",
-                "Authentic Exam Question Paper & Solutions",
-                "High-Yield Mock Test (MCQs + Explanations)",
-                "Master Revision Blueprint & Formula Sheet"
+                "NEET / JEE & Medical/Engineering",
+                "Graduation / University Exams (BA/BSc/BCom/MBA)",
+                "Competitive (UGC NET / SSC / State PCS / UPSC)"
             ]
         )
 
-    lang_pref = st.radio("Language / Medium", ["Bilingual (Hindi + English)", "Pure English", "Pure Hindi (हिंदी)"], horizontal=True)
+    lang_pref = st.radio("Language Medium", ["Bilingual (English + Hindi Explanation)", "Pure English", "Pure Hindi (हिंदी)"], horizontal=True)
 
-    if st.button("⚡ Generate Exhaustive Academic Manifest", use_container_width=True):
+    if st.button("⚡ Generate Exhaustive Multi-Page Manifest (Full 5-8 Pages)", use_container_width=True):
         if not target_subject.strip():
-            st.warning("Please enter a subject, chapter, or exam name.")
+            st.warning("Please enter a subject or chapter name.")
         else:
-            with st.spinner(f"Compiling comprehensive {academic_tier} material for: {target_subject}..."):
-                deep_prompt = f"""
-                You are the Academic & Examination Intelligence Matrix of {OS_NAME}, engineered by {CREATOR_FULL_NAME}.
-                You are a senior master professor and exam paper setter.
+            prog_bar = st.progress(0, text="Initializing Academic Intelligence Pipeline...")
+            
+            system_base = (
+                f"You are the Academic Matrix of {OS_NAME}, engineered by {CREATOR_FULL_NAME}. "
+                f"You write exhaustive, high-density textbook & exam material for '{target_subject}' ({academic_tier}) in '{lang_pref}'. "
+                f"Never give brief summaries. Write exhaustive detailed notes with diagrams/equations explained."
+            )
 
-                INPUT PARAMETERS:
-                - Target: "{target_subject}"
-                - Academic Tier: "{academic_tier}"
-                - Format: "{action_mode}"
-                - Language Medium: "{lang_pref}"
+            # Section 1: Detailed Concepts & Core Principles
+            prog_bar.progress(20, text="[1/4] Compiling Comprehensive Theoretical Foundations...")
+            p1 = (
+                f"Write SECTION 1: COMPREHENSIVE CHAPTER FOUNDATIONS & IN-DEPTH THEORY for '{target_subject}'.\n"
+                f"- Complete syllabus breakdown & weightage.\n"
+                f"- Every single concept, definition, scientific law/principle explained thoroughly with chemical equations/formulas.\n"
+                f"- Classification tables, real-life applications, and step-by-step processes.\n"
+                f"Write at least 600-800 words."
+            )
+            sec1 = call_single_section(system_base, p1, max_tokens=1800)
 
-                INSTRUCTIONS FOR COMPREHENSIVE OUTPUT:
-                You MUST deliver a COMPLETE, MULTI-PAGE EXHAUSTIVE DELIVERABLE. Never return brief summaries or 1-line fallbacks.
+            # Section 2: Advanced Mechanisms & Solved Examples
+            prog_bar.progress(45, text="[2/4] Formulating Mechanisms, Solved Numericals & Reaction Schemes...")
+            p2 = (
+                f"Write SECTION 2: MECHANISMS, SOLVED EXAMPLES & CRITICAL DERIVATIONS for '{target_subject}'.\n"
+                f"- Step-by-step solved problems / numericals / reaction mechanisms.\n"
+                f"- Crucial experimental setups, lab preparation methods, or historical causality.\n"
+                f"- Common mistakes students make and expert examiner tips.\n"
+                f"Write at least 600-800 words."
+            )
+            sec2 = call_single_section(system_base, p2, max_tokens=1800)
 
-                1. If 'Exhaustive Chapter Notes & Blueprint':
-                   - Complete Chapter Blueprint (Marks weightage & key sections).
-                   - Detailed Concept Breakdown with in-depth definitions, principles, and diagrams/steps explained.
-                   - Solved Examples / Key Historical or Scientific Evidence.
-                   - Common Exam Mistakes to avoid.
+            # Section 3: Exam-Grade Subjective Question Bank (2, 3 & 5 Marks)
+            prog_bar.progress(70, text="[3/4] Structuring Official Exam Question Bank (Short & Long Answers)...")
+            p3 = (
+                f"Write SECTION 3: OFFICIAL BOARD/EXAM QUESTION BANK & STEPWISE SOLUTIONS for '{target_subject}'.\n"
+                f"- 3 Very Short Answer Questions (1-2 Marks) with accurate answers.\n"
+                f"- 3 Short Answer Questions (3 Marks) with detailed step-wise points.\n"
+                f"- 2 Long Analytical / Case-Based Questions (5 Marks) with complete marking scheme answers.\n"
+                f"Write at least 600-800 words."
+            )
+            sec3 = call_single_section(system_base, p3, max_tokens=1800)
 
-                2. If 'Authentic Exam Question Paper & Solutions':
-                   - Structured Paper (Section A: Very Short/Objective, Section B: Short 3-Marks, Section C: Long Analytical 5-Marks).
-                   - Full detailed Step-by-Step Marking Scheme & Answers for every single question.
+            # Section 4: 10 High-Yield MCQs + Formula/Revision Sheet
+            prog_bar.progress(90, text="[4/4] Generating 10 Exam-Grade MCQs & Master Revision Checklist...")
+            p4 = (
+                f"Write SECTION 4: HIGH-YIELD MOCK TEST (10 MCQs) & RAPID REVISION CHECKLIST for '{target_subject}'.\n"
+                f"- Exactly 10 challenging multiple-choice questions with 4 distinct options (A, B, C, D).\n"
+                f"- Full Answer Key with deep conceptual explanation for every question.\n"
+                f"- 1-Page Rapid Revision Bullet Points & Formula Cheat Sheet.\n"
+                f"Write at least 600-800 words."
+            )
+            sec4 = call_single_section(system_base, p4, max_tokens=1800)
 
-                3. If 'High-Yield Mock Test (MCQs + Explanations)':
-                   - 10 Authentic, challenging exam-grade MCQs with 4 options (A, B, C, D).
-                   - Detailed Answer Key and in-depth conceptual explanation for every question.
+            prog_bar.progress(100, text="Assembling Multi-Page Document...")
 
-                4. If 'Master Revision Blueprint & Formula Sheet':
-                   - High-Yield Key Points & Core Formulas.
-                   - Chronology/Timelines or Reaction Mechanisms.
-                   - Rapid 15-Minute Pre-Exam Checklist.
+            # Combine all 4 Sections into an Exhaustive Master Deliverable
+            full_academic_doc = (
+                f"# Academic Intelligence Matrix: {target_subject.upper()}\n"
+                f"**Standard/Tier:** {academic_tier} | **Medium:** {lang_pref}\n"
+                f"**Engine:** {OS_NAME} | **Architect:** {CREATOR_FULL_NAME}\n\n"
+                f"---\n\n"
+                f"## MODULE 1: COMPREHENSIVE THEORETICAL FOUNDATIONS\n\n{sec1}\n\n"
+                f"---\n\n"
+                f"## MODULE 2: MECHANISMS, SOLVED EXAMPLES & CRITICAL ANALYSIS\n\n{sec2}\n\n"
+                f"---\n\n"
+                f"## MODULE 3: OFFICIAL EXAMINATION QUESTION BANK & STEPWISE SOLUTIONS\n\n{sec3}\n\n"
+                f"---\n\n"
+                f"## MODULE 4: HIGH-YIELD MOCK TEST (10 MCQs) & RAPID REVISION CHECKLIST\n\n{sec4}"
+            )
 
-                Format with clean headings (##, ###), bullet points, bold key terms, and professional academic structure.
-                """
+            st.markdown(full_academic_doc)
 
-                academic_content = execute_academic_engine(deep_prompt)
+            # Build Multi-Page Word and PDF
+            pages_list = [sec1, sec2, sec3, sec4]
+            acad_docx = build_multi_page_docx(pages_list, doc_title=f"{target_subject} ({academic_tier})")
+            acad_pdf = build_executive_pdf(f"{target_subject} ({academic_tier})", full_academic_doc)
 
-                if not academic_content:
-                    academic_content = (
-                        f"# Academic Matrix: {target_subject}\n\n"
-                        f"## Tier: {academic_tier} | Format: {action_mode}\n\n"
-                        f"System synthesized academic blueprint. Please execute again for deep expansion."
+            st.success(f"✅ Complete Multi-Page Academic Manifest Compiled (Total 4 Comprehensive Modules Generated)!")
+
+            c_down1, c_down2 = st.columns(2)
+            if acad_docx:
+                with c_down1:
+                    st.download_button(
+                        "📥 Download Complete Multi-Page Word (.docx)",
+                        acad_docx,
+                        file_name=f"{target_subject.replace(' ', '_')}_Complete_Notes.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        use_container_width=True
                     )
-
-                st.markdown(academic_content)
-
-                # Export Multi-page Deliverables
-                acad_docx = build_multi_page_docx([academic_content], doc_title=f"{target_subject} - {academic_tier}")
-                acad_pdf = build_executive_pdf(f"{target_subject} ({academic_tier})", academic_content)
-
-                c_down1, c_down2 = st.columns(2)
-                if acad_docx:
-                    with c_down1:
-                        st.download_button(
-                            "📥 Download Study Manifest (.docx)",
-                            acad_docx,
-                            file_name=f"{target_subject.replace(' ', '_')}_Notes.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            use_container_width=True
-                        )
-                if acad_pdf:
-                    with c_down2:
-                        st.download_button(
-                            "📥 Download Study Manifest (.pdf)",
-                            acad_pdf,
-                            file_name=f"{target_subject.replace(' ', '_')}_Notes.pdf",
-                            mime="application/pdf",
-                            use_container_width=True
-                        )
+            if acad_pdf:
+                with c_down2:
+                    st.download_button(
+                        "📥 Download Complete Multi-Page PDF (.pdf)",
+                        acad_pdf,
+                        file_name=f"{target_subject.replace(' ', '_')}_Complete_Notes.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
