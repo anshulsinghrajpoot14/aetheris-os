@@ -11,9 +11,6 @@ import streamlit as st
 from dotenv import load_dotenv
 from PIL import Image
 
-# ------------------------------------------------------------
-# Core Safe Imports
-# ------------------------------------------------------------
 try:
     from pypdf import PdfReader
     PDF_OK = True
@@ -52,15 +49,13 @@ except ImportError:
     REPORTLAB_OK = False
 
 # ============================================================
-# 1. BULLETPROOF KEY RESOLUTION (STREAMLIT SECRETS + .ENV)
+# 1. BULLETPROOF KEY RESOLUTION
 # ============================================================
 load_dotenv(override=True)
 
 def get_secret(key_name):
-    # 1. Check Streamlit Cloud Secrets first
     if hasattr(st, "secrets") and key_name in st.secrets:
         return str(st.secrets[key_name]).strip()
-    # 2. Check os.environ / .env
     val = os.getenv(key_name, "").strip()
     if val:
         return val
@@ -143,7 +138,7 @@ if "processed_docs" not in st.session_state:
     st.session_state.processed_docs = []
 
 # ============================================================
-# 4. DIRECT DETERMINISTIC CONVERTERS
+# 4. DETERMINISTIC CONVERTERS
 # ============================================================
 def build_docx_bytes(title, content_text):
     if not DOCX_OK:
@@ -205,7 +200,7 @@ def build_pdf_bytes(title, content_text):
         return None
 
 # ============================================================
-# 5. ZERO-DEPENDENCY NATIVE OCR ENGINE (DIRECT REST + GROQ)
+# 5. EXTRACTION ENGINES
 # ============================================================
 def extract_text_from_pdf(file_bytes):
     if not PDF_OK:
@@ -228,8 +223,33 @@ def extract_text_from_image(image_bytes, mime_type="image/jpeg"):
         "Do NOT summarize, explain, or omit anything. Return only the raw extracted text."
     )
 
-    # 1. Primary: Direct Gemini REST API (Bypasses library/version conflicts)
-    if GEMINI_API_KEY and REQUESTS_OK:
+    # 1. Groq Vision (Primary)
+    if GROQ_API_KEY and Groq:
+        try:
+            g_client = Groq(api_key=GROQ_API_KEY, timeout=25.0)
+            b64_data = base64.b64encode(image_bytes).decode("utf-8")
+            resp = g_client.chat.completions.create(
+                model="llama-3.2-11b-vision-preview",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}}
+                        ]
+                    }
+                ],
+                temperature=0.1
+            )
+            if resp.choices and resp.choices[0].message.content:
+                text_res = resp.choices[0].message.content.strip()
+                if text_res:
+                    return text_res
+        except Exception:
+            pass
+
+    # 2. Direct Gemini REST
+    if GEMINI_API_KEY and REQUESTS_OK and GEMINI_API_KEY.startswith("AIzaSy"):
         b64_data = base64.b64encode(image_bytes).decode("utf-8")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         payload = {
@@ -250,30 +270,7 @@ def extract_text_from_image(image_bytes, mime_type="image/jpeg"):
         except Exception:
             pass
 
-    # 2. Secondary: Groq Vision Fallback
-    if GROQ_API_KEY and Groq:
-        try:
-            g_client = Groq(api_key=GROQ_API_KEY, timeout=20.0)
-            b64_data = base64.b64encode(image_bytes).decode("utf-8")
-            resp = g_client.chat.completions.create(
-                model="llama-3.2-11b-vision-preview",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}}
-                        ]
-                    }
-                ],
-                temperature=0.1
-            )
-            if resp.choices and resp.choices[0].message.content:
-                return resp.choices[0].message.content.strip()
-        except Exception:
-            pass
-
-    return "Error: Unable to transcribe. Please ensure GEMINI_API_KEY or GROQ_API_KEY is saved in Streamlit Cloud Secrets."
+    return "Error: Unable to transcribe. Please ensure GROQ_API_KEY is valid in Streamlit Secrets."
 
 # ============================================================
 # 6. HEADER
@@ -296,7 +293,7 @@ st.markdown(
 )
 
 # ============================================================
-# 7. SIDEBAR: DIRECT DOCUMENT TO WORD / PDF WORKSPACE
+# 7. SIDEBAR CONVERTER
 # ============================================================
 with st.sidebar:
     st.markdown("### 📥 Universal File Converter")
@@ -367,7 +364,7 @@ with st.sidebar:
         st.rerun()
 
 # ============================================================
-# 8. MAIN WORKSPACE: TEXT TO WORD / PDF & COGNITIVE CHAT
+# 8. MAIN CHAT & CONVERTER
 # ============================================================
 for idx, msg in enumerate(st.session_state.messages):
     avatar = "👤" if msg["role"] == "user" else "🤖"
@@ -414,11 +411,11 @@ if user_prompt:
             pdf_file = last_doc["pdf"]
             st.markdown(out_text)
         else:
-            instruction = f"You are {OS_NAME}, engineered by {CREATOR_FULL_NAME}. Write exhaustive, complete, verbatim text as requested."
+            instruction = f"You are {OS_NAME}, engineered by {CREATOR_FULL_NAME}. Write exhaustive, complete text as requested."
             out_text = ""
             if GROQ_API_KEY and Groq:
                 try:
-                    client = Groq(api_key=GROQ_API_KEY, timeout=8.0)
+                    client = Groq(api_key=GROQ_API_KEY, timeout=10.0)
                     r = client.chat.completions.create(
                         model="llama-3.3-70b-versatile",
                         messages=[{"role": "system", "content": instruction}, {"role": "user", "content": user_prompt}],
