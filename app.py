@@ -223,33 +223,35 @@ def extract_text_from_image(image_bytes, mime_type="image/jpeg"):
         "Do NOT summarize, explain, or omit anything. Return only the raw extracted text."
     )
 
-    # 1. Groq Vision (Primary)
+    # 1. Groq Active Vision Models (Qwen 3.6 27B / Llama 4 Scout)
     if GROQ_API_KEY and Groq:
-        try:
-            g_client = Groq(api_key=GROQ_API_KEY, timeout=25.0)
-            b64_data = base64.b64encode(image_bytes).decode("utf-8")
-            resp = g_client.chat.completions.create(
-                model="llama-3.2-11b-vision-preview",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}}
-                        ]
-                    }
-                ],
-                temperature=0.1
-            )
-            if resp.choices and resp.choices[0].message.content:
-                text_res = resp.choices[0].message.content.strip()
-                if text_res:
-                    return text_res
-        except Exception:
-            pass
+        b64_data = base64.b64encode(image_bytes).decode("utf-8")
+        g_client = Groq(api_key=GROQ_API_KEY, timeout=25.0)
+        
+        for model_name in ["qwen/qwen3.6-27b", "meta-llama/llama-4-scout-17b-16e-instruct"]:
+            try:
+                resp = g_client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}}
+                            ]
+                        }
+                    ],
+                    temperature=0.1
+                )
+                if resp.choices and resp.choices[0].message.content:
+                    text_res = resp.choices[0].message.content.strip()
+                    if text_res:
+                        return text_res
+            except Exception:
+                continue
 
-    # 2. Direct Gemini REST
-    if GEMINI_API_KEY and REQUESTS_OK and GEMINI_API_KEY.startswith("AIzaSy"):
+    # 2. Direct Gemini REST API (if valid key available)
+    if GEMINI_API_KEY and REQUESTS_OK:
         b64_data = base64.b64encode(image_bytes).decode("utf-8")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         payload = {
@@ -270,7 +272,7 @@ def extract_text_from_image(image_bytes, mime_type="image/jpeg"):
         except Exception:
             pass
 
-    return "Error: Unable to transcribe. Please ensure GROQ_API_KEY is valid in Streamlit Secrets."
+    return "Error: Unable to transcribe image. Please ensure API keys are saved properly."
 
 # ============================================================
 # 6. HEADER
@@ -414,16 +416,19 @@ if user_prompt:
             instruction = f"You are {OS_NAME}, engineered by {CREATOR_FULL_NAME}. Write exhaustive, complete text as requested."
             out_text = ""
             if GROQ_API_KEY and Groq:
-                try:
-                    client = Groq(api_key=GROQ_API_KEY, timeout=10.0)
-                    r = client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[{"role": "system", "content": instruction}, {"role": "user", "content": user_prompt}],
-                        temperature=0.3
-                    )
-                    out_text = r.choices[0].message.content.strip()
-                except Exception:
-                    pass
+                for t_model in ["llama-3.3-70b-versatile", "openai/gpt-oss-120b"]:
+                    try:
+                        client = Groq(api_key=GROQ_API_KEY, timeout=10.0)
+                        r = client.chat.completions.create(
+                            model=t_model,
+                            messages=[{"role": "system", "content": instruction}, {"role": "user", "content": user_prompt}],
+                            temperature=0.3
+                        )
+                        out_text = r.choices[0].message.content.strip()
+                        if out_text:
+                            break
+                    except Exception:
+                        continue
             if not out_text:
                 out_text = user_prompt
 
