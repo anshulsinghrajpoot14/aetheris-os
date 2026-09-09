@@ -200,7 +200,7 @@ def build_pdf_bytes(title, content_text):
         return None
 
 # ============================================================
-# 5. EXTRACTION ENGINES
+# 5. EXTRACTION ENGINES (WITH BULLETPROOF FALLBACK)
 # ============================================================
 def extract_text_from_pdf(file_bytes):
     if not PDF_OK:
@@ -216,63 +216,71 @@ def extract_text_from_pdf(file_bytes):
     except Exception as e:
         return f"PDF Extraction Error: {str(e)}"
 
-def extract_text_from_image(image_bytes, mime_type="image/jpeg"):
+def extract_text_from_image(image_bytes, mime_type="image/jpeg", filename="document"):
     prompt = (
         "Transcribe all text from this image VERBATIM in its original script and language (Hindi, Sanskrit, English, or Hinglish). "
         "Keep line breaks, punctuation, and exact spellings. "
         "Do NOT summarize, explain, or omit anything. Return only the raw extracted text."
     )
 
-    # 1. Groq Active Vision Models (Qwen 3.6 27B / Llama 4 Scout)
+    # 1. Try Groq Vision Models
     if GROQ_API_KEY and Groq:
         b64_data = base64.b64encode(image_bytes).decode("utf-8")
-        g_client = Groq(api_key=GROQ_API_KEY, timeout=25.0)
-        
-        for model_name in ["qwen/qwen3.6-27b", "meta-llama/llama-4-scout-17b-16e-instruct"]:
-            try:
-                resp = g_client.chat.completions.create(
-                    model=model_name,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}}
-                            ]
-                        }
-                    ],
-                    temperature=0.1
-                )
-                if resp.choices and resp.choices[0].message.content:
-                    text_res = resp.choices[0].message.content.strip()
-                    if text_res:
-                        return text_res
-            except Exception:
-                continue
-
-    # 2. Direct Gemini REST API (if valid key available)
-    if GEMINI_API_KEY and REQUESTS_OK:
-        b64_data = base64.b64encode(image_bytes).decode("utf-8")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-        payload = {
-            "contents": [{
-                "parts": [
-                    {"text": prompt},
-                    {"inline_data": {"mime_type": mime_type, "data": b64_data}}
-                ]
-            }]
-        }
         try:
-            resp = requests.post(url, json=payload, timeout=25)
-            if resp.status_code == 200:
-                res_data = resp.json()
-                text = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
-                if text:
-                    return text
+            g_client = Groq(api_key=GROQ_API_KEY, timeout=20.0)
+            for model_name in ["llama-3.2-11b-vision-preview", "qwen/qwen3.6-27b", "meta-llama/llama-4-scout-17b-16e-instruct"]:
+                try:
+                    resp = g_client.chat.completions.create(
+                        model=model_name,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": prompt},
+                                    {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}}
+                                ]
+                            }
+                        ],
+                        temperature=0.1
+                    )
+                    if resp.choices and resp.choices[0].message.content:
+                        text_res = resp.choices[0].message.content.strip()
+                        if text_res:
+                            return text_res
+                except Exception:
+                    continue
         except Exception:
             pass
 
-    return "Error: Unable to transcribe image. Please ensure API keys are saved properly."
+    # 2. Try Gemini REST API
+    if GEMINI_API_KEY and REQUESTS_OK:
+        b64_data = base64.b64encode(image_bytes).decode("utf-8")
+        for m_name in ["gemini-1.5-flash", "gemini-1.5-pro"]:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m_name}:generateContent?key={GEMINI_API_KEY}"
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": prompt},
+                        {"inline_data": {"mime_type": mime_type, "data": b64_data}}
+                    ]
+                }]
+            }
+            try:
+                resp = requests.post(url, json=payload, timeout=20)
+                if resp.status_code == 200:
+                    res_data = resp.json()
+                    text = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    if text:
+                        return text
+            except Exception:
+                continue
+
+    # 3. Ultimate Fallback: Never fail, allow user to edit or proceed
+    return (
+        f"[Notice: AI Vision API could not auto-process '{filename}' due to key/network limits.]\n\n"
+        "Please type or paste your text directly in the chat below, and Aetheris OS will instantly generate "
+        "your downloadable Word (.docx) and PDF (.pdf) files with zero errors!"
+    )
 
 # ============================================================
 # 6. HEADER
@@ -299,7 +307,7 @@ st.markdown(
 # ============================================================
 with st.sidebar:
     st.markdown("### 📥 Universal File Converter")
-    st.caption("Upload Photo (Hindi/Eng/Sanskrit) or PDF to convert into Word & PDF:")
+    st.caption("Upload Photo or PDF to convert into Word & PDF:")
     
     upload = st.file_uploader("Upload Image or PDF", type=["png", "jpg", "jpeg", "pdf"], key="file_converter")
 
@@ -310,9 +318,9 @@ with st.sidebar:
         mime = "image/png" if fext == ".png" else "image/jpeg"
 
         if not any(d["name"] == fname for d in st.session_state.processed_docs):
-            with st.spinner(f"Reading and transcribing {fname}..."):
+            with st.spinner(f"Reading and converting {fname}..."):
                 if fext in [".png", ".jpg", ".jpeg"]:
-                    extracted = extract_text_from_image(b_data, mime_type=mime)
+                    extracted = extract_text_from_image(b_data, mime_type=mime, filename=fname)
                 elif fext == ".pdf":
                     extracted = extract_text_from_pdf(b_data)
                 else:
@@ -403,38 +411,28 @@ if user_prompt:
         st.markdown(user_prompt)
 
     with st.chat_message("assistant", avatar="🤖"):
-        is_convert_req = any(k in user_prompt.lower() for k in ["convert", "word me", "pdf me", "docx me", "badlo", "photo"])
-        has_docs = len(st.session_state.processed_docs) > 0
+        instruction = f"You are {OS_NAME}, engineered by {CREATOR_FULL_NAME}. Write exhaustive, complete text as requested."
+        out_text = ""
+        if GROQ_API_KEY and Groq:
+            for t_model in ["llama-3.3-70b-versatile"]:
+                try:
+                    client = Groq(api_key=GROQ_API_KEY, timeout=10.0)
+                    r = client.chat.completions.create(
+                        model=t_model,
+                        messages=[{"role": "system", "content": instruction}, {"role": "user", "content": user_prompt}],
+                        temperature=0.3
+                    )
+                    out_text = r.choices[0].message.content.strip()
+                    if out_text:
+                        break
+                except Exception:
+                    continue
+        if not out_text:
+            out_text = user_prompt
 
-        if is_convert_req and has_docs:
-            last_doc = st.session_state.processed_docs[-1]
-            out_text = f"✅ Extracted content from **{last_doc['name']}**:\n\n{last_doc['content']}"
-            docx_file = last_doc["docx"]
-            pdf_file = last_doc["pdf"]
-            st.markdown(out_text)
-        else:
-            instruction = f"You are {OS_NAME}, engineered by {CREATOR_FULL_NAME}. Write exhaustive, complete text as requested."
-            out_text = ""
-            if GROQ_API_KEY and Groq:
-                for t_model in ["llama-3.3-70b-versatile", "openai/gpt-oss-120b"]:
-                    try:
-                        client = Groq(api_key=GROQ_API_KEY, timeout=10.0)
-                        r = client.chat.completions.create(
-                            model=t_model,
-                            messages=[{"role": "system", "content": instruction}, {"role": "user", "content": user_prompt}],
-                            temperature=0.3
-                        )
-                        out_text = r.choices[0].message.content.strip()
-                        if out_text:
-                            break
-                    except Exception:
-                        continue
-            if not out_text:
-                out_text = user_prompt
-
-            st.markdown(out_text)
-            docx_file = build_docx_bytes("Aetheris Generated Document", out_text)
-            pdf_file = build_pdf_bytes("Aetheris Generated Document", out_text)
+        st.markdown(out_text)
+        docx_file = build_docx_bytes("Aetheris Generated Document", out_text)
+        pdf_file = build_pdf_bytes("Aetheris Generated Document", out_text)
 
         c1, c2 = st.columns(2)
         if docx_file:
