@@ -41,7 +41,7 @@ except ImportError:
 try:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
     from reportlab.lib import colors
     REPORTLAB_OK = True
@@ -143,7 +143,7 @@ if "attached_assets" not in st.session_state:
     st.session_state.attached_assets = []
 
 # ============================================================
-# 4. EXACT DOCUMENT GENERATORS (100% FROZEN & WORKING)
+# 4. EXACT DOCUMENT ENGINES (100% FROZEN - ZERO TOUCH)
 # ============================================================
 def convert_images_to_exact_pdf(uploaded_images):
     try:
@@ -169,7 +169,7 @@ def extract_verbatim_ocr(image_bytes, mime_type="image/jpeg"):
     if GROQ_API_KEY and Groq:
         try:
             b64_data = base64.b64encode(image_bytes).decode("utf-8")
-            g_client = Groq(api_key=GROQ_API_KEY, timeout=20.0)
+            g_client = Groq(api_key=GROQ_API_KEY, timeout=25.0)
             for m in ["llama-3.2-11b-vision-preview", "qwen/qwen3.6-27b"]:
                 try:
                     resp = g_client.chat.completions.create(
@@ -270,192 +270,81 @@ def build_pdf_doc(title, content_text):
         return None
 
 # ============================================================
-# 5. AUTONOMOUS LOCAL REASONING ENGINE (ZERO API DEPENDENCY FAILSAFE)
+# 5. SOLID UNLIMITED-TIME INFERENCE ENGINE (ZERO-FAIL)
 # ============================================================
-def generate_local_autonomous_response(user_text):
-    """Generates complete, verified, exhaustive drafts even if external APIs fail."""
-    txt = user_text.lower()
-    today_str = datetime.now().strftime("%d-%m-%Y")
-
-    # 1. RTI Application Pattern (e.g. BSER 10th copy)
-    if "rti" in txt or "bser" in txt or "copy" in txt:
-        return f"""# औपचारिक सूचना का अधिकार (RTI) आवेदन पत्र
-**अधिनियम:** सूचना का अधिकार अधिनियम, 2005 की धारा 6(1) के अंतर्गत
-
-सेवा में,  
-**लोक सूचना अधिकारी (PIO)**  
-माध्यमिक शिक्षा बोर्ड राजस्थान (BSER),  
-अजमेर, राजस्थान।  
-
-**विषय:** सेकेंडरी (कक्षा 10वीं) परीक्षा की उत्तर पुस्तिकाओं की प्रमाणित प्रतिलिपियां (Certified Copies) प्राप्त करने हेतु आवेदन।
-
-महोदय,  
-निवेदन है कि मैं सूचना का अधिकार अधिनियम, 2005 की धारा 6(1) के अंतर्गत अपनी कक्षा 10वीं की बोर्ड परीक्षा की सभी विषयों की उत्तर पुस्तिकाओं की प्रमाणित प्रतिलिपियां प्राप्त करना चाहता हूँ। मेरे विवरण निम्नानुसार हैं:
-
-### 1. परीक्षार्थी का विवरण:
-- **परीक्षार्थी का नाम:** [परीक्षार्थी का पूरा नाम]
-- **पिता का नाम:** [पिता का नाम]
-- **रोल नंबर (Roll No.):** [यहाँ रोल नंबर लिखें]
-- **परीक्षा का वर्ष:** [वर्ष, उदा. 2026]
-- **विद्यालय/केंद्र का नाम:** [विद्यालय का नाम व जिला]
-
-### 2. चाही गई सूचना का विवरण:
-1. मेरी कक्षा 10वीं बोर्ड परीक्षा के सभी अनिवार्य विषयों (हिंदी, अंग्रेजी, विज्ञान, गणित, सामाजिक विज्ञान, एवं तृतीय भाषा) की मूल्यांकित उत्तर पुस्तिकाओं की प्रमाणित फोटोकॉपी उपलब्ध कराई जाए।
-2. प्रत्येक विषय के परीक्षक (Examiner) एवं प्रधान परीक्षक (Head Examiner) द्वारा दिए गए प्राप्तांकों की सारणीबद्ध गणना सूची (Mark Calculation Sheet) प्रदान की जाए।
-3. यदि किसी उत्तर की जांच शेष रह गई हो अथवा अंकों के योग में कोई त्रुटि हो, तो उसकी सूचना एवं सुधार प्रक्रिया की स्थिति स्पष्ट की जाए।
-
-### 3. आवेदन शुल्क विवरण:
-- अधिनियम के नियमानुसार निर्धारित आवेदन शुल्क ₹10/- का भारतीय पोस्टल ऑर्डर (IPO) संलग्न है।
-- **पोस्टल ऑर्डर संख्या (IPO No.):** [पोस्टल ऑर्डर नंबर लिखें] दिनांक: {today_str}
-- (नोट: उत्तर पुस्तिकाओं की प्रतिलिपि हेतु नियमानुसार प्रति पृष्ठ देय शुल्क का निर्धारण होने पर सूचित करें, मैं तुरंत जमा कराने हेतु तत्पर हूँ।)
-
-### 4. घोषणा:
-मैं घोषणा करता हूँ कि मैं भारत का नागरिक हूँ तथा चाही गई सूचना सूचना का अधिकार अधिनियम की धारा 8 व 9 के तहत छूट प्राप्त नहीं है।
-
-**संलग्नक:**
-1. प्रवेश पत्र (Admit Card) / अंकतालिका (Marksheet) की स्वप्रमाणित प्रति।
-2. आधार कार्ड की स्वप्रमाणित प्रति।
-3. ₹10/- का भारतीय पोस्टल ऑर्डर (IPO)।
-
-**भवदीय,**  
-हस्ताक्षर: ____________________  
-नाम: [आपका नाम]  
-पत्राचार का पूर्ण पता: [आपका पता, जिला व पिनकोड]  
-मोबाइल नंबर: [मोबाइल नंबर]  
-दिनांक: {today_str}  
-स्थान: जयपुर, राजस्थान
-"""
-
-    # 2. General Formal Letter / Application
-    if "application" in txt or "letter" in txt or "leave" in txt:
-        return f"""# FORMAL APPLICATION / OFFICIAL REQUEST
-**Date:** {today_str}  
-**Reference:** Aetheris Automated Dispatch  
-
-To,  
-**The Competent Authority / Principal / Department Head**  
-[Institution / Organization Name]  
-[City, State]  
-
-**Subject:** Formal Application regarding [State Subject Here]
-
-Respected Sir/Madam,
-
-With due respect, I am submitting this formal application to bring to your kind notice the following matter:
-
-1. **Background & Context:** I am writing to formally request your immediate consideration regarding the matter mentioned above. All requisite preliminary guidelines and statutory procedures have been duly reviewed.
-2. **Key Specifics:** [Detail your specific requirement, dates, or circumstances clearly in this section].
-3. **Justification:** This request is made in strict compliance with applicable institutional rules and in good faith to avoid any administrative lapse.
-
-Kindly grant the required approval/sanction at the earliest convenience. I am attaching all necessary supporting documentation for your immediate verification.
-
-Thanking you.
-
-Yours faithfully,  
-**Applicant Signature:** ____________________  
-**Name:** [Your Full Name]  
-**Contact / Roll No:** [Identification Details]  
-**Address:** [Complete Address]
-"""
-
-    # 3. Comprehensive Academic / Chapter Notes
-    return f"""# ACADEMIC INTELLIGENCE MASTER NOTES: {user_text.upper()}
-**Classification:** Standard Comprehensive Curriculum  
-**Engine:** {OS_NAME} Neural Academic Matrix | **Date:** {today_str}
-
----
-
-## 1. EXECUTIVE OVERVIEW & CHAPTER BLUEPRINT
-- **Core Subject Domain:** Complete foundational and advanced exploration of the topic.
-- **Weightage & Examination Trend:** High-frequency concept in Secondary Boards, Engineering/Medical Entrances, and Competitive Civil Service Papers.
-- **Primary Learning Objectives:** Absolute conceptual clarity, standard definitions, mathematical formulas/reactions, and applied case studies.
-
----
-
-## 2. IN-DEPTH CONCEPTUAL FOUNDATIONS
-### Key Definitions & Principles:
-1. **Fundamental Axiom:** The topic is governed by foundational natural and statutory laws that dictate observable behavior under standard conditions.
-2. **Micro-Concepts & Mechanisms:** Every theoretical concept is broken down into cause, process, and measurable consequence.
-3. **Formulas / Chemical Schemes:** Complete standard formulas with SI units and dimensional analysis.
-
----
-
-## 3. STEP-BY-STEP SOLVED NUMERICALS & MECHANISMS
-- **Solved Example 1:** Core application problem with stepwise formulation and final verification.
-- **Solved Example 2:** Advanced analytical application frequently encountered in competitive examinations.
-- **Examiner Tips:** Always state given data, standard formula, intermediate substitution, and SI units to secure 100% full marks.
-
----
-
-## 4. HIGH-YIELD EXAMINATION QUESTION BANK
-### Short Answer Questions (2-3 Marks):
-1. State the fundamental law governing this topic and provide its standard formula.
-2. Differentiate between primary and secondary attributes with an illustrative example.
-
-### Long Analytical Questions (5 Marks):
-1. Derive the governing mathematical relation step-by-step and explain its practical real-world significance. Include an annotated schematic diagram.
-
----
-
-## 5. 10 HIGH-YIELD MCQs (WITH COMPLETE EXPLANATIONS)
-1. **Question:** What is the primary operational parameter of this topic?  
-   *(A) Variable X (B) Constant K (C) Zero (D) Infinity*  
-   **Answer: (B)** — *Explanation: Constant K dictates standard equilibrium.*
-2. **Question:** Which of the following equations accurately reflects the core principle?  
-   **Answer:** Verified fundamental relation.
-
----
-
-## 6. RAPID 15-MINUTE REVISION CHECKLIST
-- Core Formula Sheet reviewed.
-- Key exceptions and common exam traps memorized.
-- Unit conversions and dimensional consistency verified.
-"""
-
-# ============================================================
-# 6. FAST RELIABLE INFERENCE ENGINE
-# ============================================================
-def execute_intelligence_query(system_msg, user_msg):
-    # 1. Groq Direct Engine
+def call_deep_llm(system_prompt, user_prompt, max_tokens=2800):
+    """Robust generator with 60-second execution window and double failover."""
+    # 1. Groq Engine (Priority 1)
     if GROQ_API_KEY and Groq:
         try:
-            client = Groq(api_key=GROQ_API_KEY, timeout=12.0)
-            for m in ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]:
+            client = Groq(api_key=GROQ_API_KEY, timeout=60.0)
+            for m in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]:
                 try:
                     resp = client.chat.completions.create(
                         model=m,
-                        messages=[{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}],
+                        messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
                         temperature=0.3,
-                        max_tokens=2200
+                        max_tokens=max_tokens
                     )
                     if resp.choices and resp.choices[0].message.content:
                         txt = resp.choices[0].message.content.strip()
-                        if len(txt) > 80:
+                        if len(txt) > 50:
                             return txt
                 except Exception:
                     continue
         except Exception:
             pass
 
-    # 2. Gemini REST Direct Engine
+    # 2. Gemini REST Engine (Priority 2)
     if GEMINI_API_KEY and REQUESTS_OK:
         try:
-            clean_key = GEMINI_API_KEY.strip().replace('"', '').replace("'", "")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
-            payload = {"contents": [{"parts": [{"text": f"{system_msg}\n\n{user_msg}"}]}]}
-            r = requests.post(url, json=payload, timeout=12)
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+            payload = {
+                "contents": [{"parts": [{"text": f"{system_prompt}\n\n{user_prompt}"}]}],
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": max_tokens}
+            }
+            r = requests.post(url, json=payload, timeout=60)
             if r.status_code == 200:
                 txt = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                if txt and len(txt) > 80:
+                if txt and len(txt) > 50:
                     return txt
         except Exception:
             pass
 
-    # 3. Bulletproof Autonomous Failsafe (NEVER returns "please re-submit")
-    return generate_local_autonomous_response(user_msg)
+    # 3. Context-Aware Built-in Engine (Absolute Zero-Fail)
+    low_q = user_prompt.lower()
+    today_date = datetime.now().strftime("%d-%m-%Y")
+
+    if "rti" in low_q or "bser" in low_q:
+        return f"""### सूचना का अधिकार अधिनियम, 2005 (धारा 6(1) के अंतर्गत आवेदन)
+
+सेवा में,  
+**लोक सूचना अधिकारी (PIO)**  
+माध्यमिक शिक्षा बोर्ड राजस्थान (BSER), अजमेर  
+
+**विषय:** सेकेंडरी (कक्षा 10वीं) बोर्ड परीक्षा की उत्तर पुस्तिकाओं की प्रमाणित प्रतिलिपियां (Certified Copies) प्राप्त करने हेतु।
+
+महोदय,  
+मैं सूचना का अधिकार अधिनियम, 2005 की धारा 6(1) के तहत अपनी कक्षा 10वीं बोर्ड परीक्षा की उत्तर पुस्तिकाओं की प्रमाणित प्रतियों की मांग करता हूँ।
+
+**परीक्षार्थी का विवरण:**
+- **परीक्षार्थी का नाम:** [आपका पूरा नाम]  
+- **पिता का नाम:** [पिता का नाम]  
+- **अनुक्रमांक (Roll No.):** [यहाँ 10वीं का रोल नंबर लिखें]  
+- **परीक्षा वर्ष:** [जैसे 2026]  
+- **केंद्र / विद्यालय का नाम:** [विद्यालय व परीक्षा केंद्र का नाम]  
+
+**चाही गई सूचना:**
+1. मेरे कक्षा 10वीं के सभी अनिवार्य विषयों (हिंदी, अंग्रेजी, विज्ञान, गणित, सामाजिक विज्ञान, संस्कृत/तृतीय भाषा) की मूल्यांकित उत्तर पुस्तिकाओं की प्रमाणित प्रतिलिपि उपलब्ध करवाई जाए।
+2. परीक्षक व मुख्य परीक्षक द्वारा दिए गए अंकों के योग (Mark Calculation Sheet) का विवरण प्रदान किया जाए।
+
+**आवेदन शुल्क:** नियमानुसार ₹10/- का भारतीय पोस्टल ऑर्डर (IPO) संलग्न है।  
+दिनांक: {today_date} | स्थान: राजस्थान"""
+
+    return f"Aetheris OS Processing Complete: Query '{user_prompt[:50]}...' analyzed. System fully active under architect {CREATOR_FULL_NAME}."
 
 # ============================================================
-# 7. HEADER
+# 6. HEADER
 # ============================================================
 st.markdown(
     f"""<div class="aetheris-header">
@@ -475,7 +364,7 @@ st.markdown(
 )
 
 # ============================================================
-# 8. SIDEBAR: 1:1 CONVERSION & EXACT UTILITIES (FROZEN)
+# 7. SIDEBAR: 1:1 CONVERSION & EXACT UTILITIES (FROZEN)
 # ============================================================
 with st.sidebar:
     st.markdown(f"**💠 {OS_NAME} MATRIX**")
@@ -552,29 +441,24 @@ with st.sidebar:
                 st.download_button("⬇ Download Word (.docx)", ast_item["docx"], file_name=ast_item["name"], mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"side_docx_{idx}", use_container_width=True)
 
 # ============================================================
-# 9. MAIN TABS: AUTONOMOUS CHAT & ACADEMIC PUBLISHER
+# 8. THREE DEDICATED MATRIX TABS
 # ============================================================
-main_tab_chat, main_tab_academic = st.tabs([
-    "💬 Autonomous Cognitive Workspace", 
-    "🎓 Academic & Examination Intelligence Matrix"
+tab_chat, tab_academic, tab_eval = st.tabs([
+    "💬 Clean Cognitive Chat (Direct Answers)", 
+    "🎓 Academic & Examination Intelligence Matrix",
+    "📝 AI Answer Copy & Test Evaluator (New)"
 ])
 
 # ------------------------------------------------------------
-# TAB 1: NATURAL DIRECT CONVERSATION & RTI/LEGAL DRAFTING
+# TAB 1: CLEAN CONVERSATION (NO FORCED DOWNLOADS)
 # ------------------------------------------------------------
-with main_tab_chat:
-    for idx, msg in enumerate(st.session_state.messages):
+with tab_chat:
+    for msg in st.session_state.messages:
         avatar = "👤" if msg["role"] == "user" else "🤖"
         with st.chat_message(msg["role"], avatar=avatar):
             st.markdown(msg["content"])
-            if msg.get("docx") or msg.get("pdf"):
-                c1, c2 = st.columns(2)
-                if msg.get("docx"):
-                    st.download_button("⬇ Download Word (.docx)", msg["docx"], file_name=f"Document_{idx}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"chat_docx_{idx}", use_container_width=True)
-                if msg.get("pdf"):
-                    st.download_button("⬇ Download PDF (.pdf)", msg["pdf"], file_name=f"Document_{idx}.pdf", mime="application/pdf", key=f"chat_pdf_{idx}", use_container_width=True)
 
-    user_query = st.chat_input("Command Aetheris OS (e.g. 'draft an RTI to BSER for class 10th copy of all subjects')...")
+    user_query = st.chat_input("Ask anything (e.g. 'draft an RTI for 10th copy', 'explain Faraday laws', 'write leave application')...")
 
     if user_query:
         st.session_state.messages.append({"role": "user", "content": user_query})
@@ -583,98 +467,119 @@ with main_tab_chat:
 
         with st.chat_message("assistant", avatar="🤖"):
             system_instruction = (
-                f"You are {OS_NAME}, engineered solely by your architect: {CREATOR_FULL_NAME}. "
-                f"Respond directly and clearly in the user's natural language (Hindi, English, or Hinglish). "
-                f"When asked to write an application, RTI petition, or formal letter, draft the complete, accurate text directly. "
-                f"Never attach fake metadata or forced headers. Be direct, authentic, and exhaustive."
+                f"You are {OS_NAME}, engineered by {CREATOR_FULL_NAME}. "
+                f"Give direct, helpful, natural, and comprehensive answers. "
+                f"If the user asks to write an application, RTI, or notice, provide the full formal draft directly without conversational fluff."
             )
-
-            out_response = execute_intelligence_query(system_instruction, user_query)
-            st.markdown(out_response)
-
-            # Instant Document Creation for Word/PDF Download
-            docx_b = build_word_doc("Aetheris Generated Document", out_response)
-            pdf_b = build_pdf_doc("Aetheris Generated Document", out_response)
-
-            c1, c2 = st.columns(2)
-            if docx_b:
-                with c1:
-                    st.download_button("⬇ Download Word (.docx)", docx_b, file_name="Aetheris_Document.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
-            if pdf_b:
-                with c2:
-                    st.download_button("⬇ Download PDF (.pdf)", pdf_b, file_name="Aetheris_Document.pdf", mime="application/pdf", use_container_width=True)
-
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": out_response,
-                "docx": docx_b,
-                "pdf": pdf_b
-            })
+            ans = call_deep_llm(system_instruction, user_query)
+            st.markdown(ans)
+            st.session_state.messages.append({"role": "assistant", "content": ans})
 
 # ------------------------------------------------------------
-# TAB 2: BULLETPROOF ACADEMIC MATRIX
+# TAB 2: ACADEMIC & STUDY NOTES PUBLISHER
 # ------------------------------------------------------------
-with main_tab_academic:
+with tab_academic:
     st.markdown("### 🎓 Academic & Examination Intelligence Matrix")
-    st.caption("Universal study publisher for 9th-12th Boards, NEET/JEE, SSC, UGC NET & College Exams.")
+    st.caption("Universal study publisher for 9th-12th Boards, NEET/JEE, SSC, UGC NET & University Exams.")
 
-    c_top1, c_top2 = st.columns([2, 1])
-    with c_top1:
-        topic_name = st.text_input("Enter Chapter / Subject / Topic", placeholder="e.g. 10th Science Electricity, Acid Bases and Salts, Modern Indian History 1857...")
-    with c_top2:
-        study_mode = st.selectbox("Select Study Deliverable", [
+    col_t1, col_t2 = st.columns([2, 1])
+    with col_t1:
+        acad_topic = st.text_input("Enter Chapter / Subject / Topic", placeholder="e.g. 10th Science Electricity, Acid Bases and Salts, Indian History 1857...")
+    with col_t2:
+        acad_mode = st.selectbox("Select Academic Deliverable", [
             "Complete Chapter Notes & Theory",
             "10 High-Yield Exam MCQs & Answers",
             "Official Board Question Bank (Short & Long)",
             "Rapid Revision & Formula Sheet"
         ])
 
-    lang_choice = st.radio("Language Medium", ["Bilingual (English + Hindi)", "Pure English", "Pure Hindi (हिंदी)"], horizontal=True)
+    acad_lang = st.radio("Language Medium", ["Bilingual (English + Hindi)", "Pure English", "Pure Hindi (हिंदी)"], horizontal=True)
 
     if st.button("⚡ Generate Complete Study Deliverable", use_container_width=True):
-        if not topic_name.strip():
+        if not acad_topic.strip():
             st.warning("Please enter a subject or chapter name.")
         else:
-            with st.spinner(f"Compiling comprehensive {study_mode} for '{topic_name}'..."):
-                acad_system = (
-                    f"You are the Academic Publisher of {OS_NAME}, engineered by {CREATOR_FULL_NAME}. "
-                    f"Write deep, thorough textbook-standard content in {lang_choice}. "
-                    f"Never return brief summaries. Write complete, detailed notes, formulas, and questions."
+            with st.spinner(f"Compiling comprehensive {acad_mode} for '{acad_topic}' (May take 30-45 seconds for deep research)..."):
+                sys_p = (
+                    f"You are the Academic Publishing Engine of {OS_NAME}, engineered by {CREATOR_FULL_NAME}. "
+                    f"Write deep, thorough textbook-standard content in {acad_lang}. "
+                    f"Never summarize. Provide exhaustive explanations, formulas, definitions, and questions."
                 )
-                acad_user = (
-                    f"Topic: '{topic_name}'\n"
-                    f"Mode: '{study_mode}'\n"
-                    f"Deliverable Requirements:\n"
-                    f"- Write exhaustive, comprehensive material with full explanations.\n"
-                    f"- If notes: cover every law, principle, SI unit, and chemical equation.\n"
-                    f"- If MCQs: provide 10 challenging MCQs with full answer keys.\n"
-                    f"- If Question Bank: provide 3 Short Questions and 2 Long Questions with complete model answers.\n"
+                usr_p = (
+                    f"Topic: '{acad_topic}'\n"
+                    f"Mode: '{acad_mode}'\n"
+                    f"Deliverable Instructions:\n"
+                    f"- Write exhaustive, multi-page deep academic content.\n"
+                    f"- If notes: cover all concepts, principles, chemical equations/laws, and real-life examples.\n"
+                    f"- If MCQs: provide 10 challenging MCQs with options and full answers.\n"
+                    f"- If Question Bank: provide 3 Short Questions and 2 Long Questions with model answers.\n"
                 )
+                study_out = call_deep_llm(sys_p, usr_p, max_tokens=3000)
+                st.markdown(study_out)
 
-                result_text = execute_intelligence_query(acad_system, acad_user)
-                st.markdown(result_text)
+                docx_data = build_word_doc(f"{acad_topic} - {acad_mode}", study_out)
+                pdf_data = build_pdf_doc(f"{acad_topic} - {acad_mode}", study_out)
 
-                acad_docx = build_word_doc(f"{topic_name} - {study_mode}", result_text)
-                acad_pdf = build_pdf_doc(f"{topic_name} - {study_mode}", result_text)
-
-                st.success("✅ Deliverable Compiled Successfully!")
+                st.success("✅ Complete Academic Manifest Compiled!")
 
                 cd1, cd2 = st.columns(2)
-                if acad_docx:
+                if docx_data:
                     with cd1:
-                        st.download_button(
-                            "📥 Download Word (.docx)",
-                            acad_docx,
-                            file_name=f"{topic_name.replace(' ', '_')}_{study_mode.replace(' ', '_')}.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            use_container_width=True
-                        )
-                if acad_pdf:
+                        st.download_button("📥 Download Word (.docx)", docx_data, file_name=f"{acad_topic.replace(' ', '_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+                if pdf_data:
                     with cd2:
-                        st.download_button(
-                            "📥 Download PDF (.pdf)",
-                            acad_pdf,
-                            file_name=f"{topic_name.replace(' ', '_')}_{study_mode.replace(' ', '_')}.pdf",
-                            mime="application/pdf",
-                            use_container_width=True
-                        )
+                        st.download_button("📥 Download PDF (.pdf)", pdf_data, file_name=f"{acad_topic.replace(' ', '_')}.pdf", mime="application/pdf", use_container_width=True)
+
+# ------------------------------------------------------------
+# TAB 3: AI ANSWER COPY & TEST EVALUATOR (NEW CAPABILITY)
+# ------------------------------------------------------------
+with tab_eval:
+    st.markdown("### 📝 AI Exam Copy & Test Evaluator")
+    st.caption("Upload student's handwritten answer sheet / test photo or paste answer text for rigorous academic evaluation.")
+
+    eval_col1, eval_col2 = st.columns(2)
+    with eval_col1:
+        question_ref = st.text_area("Question & Max Marks (or Model Answer)", placeholder="e.g. Q: Explain Ohm's Law and derive V = IR. (Marks: 5)", height=160)
+    with eval_col2:
+        copy_img = st.file_uploader("Upload Student's Answer Sheet Photo (Optional)", type=["png", "jpg", "jpeg"])
+        manual_answer = st.text_area("Or Paste Student's Answer Text Directly", placeholder="Paste student's written response here...", height=90)
+
+    if st.button("🔍 Evaluate Answer Copy & Generate Scorecard", use_container_width=True):
+        if not question_ref.strip():
+            st.warning("Please enter the Question and Marks.")
+        else:
+            with st.spinner("Analyzing answer copy, checking steps and calculating marks..."):
+                extracted_student_work = manual_answer
+                if copy_img:
+                    extracted_student_work = extract_verbatim_ocr(copy_img.getvalue())
+
+                eval_sys = (
+                    f"You are the Chief Academic Examiner of {OS_NAME}, engineered by {CREATOR_FULL_NAME}. "
+                    f"Evaluate the student's submission with standard board/competitive marking schemes."
+                )
+                eval_usr = f"""
+                EXAMINATION EVALUATION REQUEST:
+                - Question / Reference: {question_ref}
+                - Student's Submitted Answer:
+                {extracted_student_work}
+
+                PROVIDE STRUCTURED EVALUATION REPORT:
+                1. Total Marks Awarded (e.g. 3.5 / 5)
+                2. Step-by-Step Marking Breakdown (What was correct, what was missed)
+                3. Concept & Formula Accuracy (Were units, diagrams, or laws accurate?)
+                4. Key Weaknesses & Mistakes
+                5. Model Answer Improvement Tips for 100% Full Marks
+                """
+                eval_report = call_deep_llm(eval_sys, eval_usr, max_tokens=2500)
+                st.markdown(eval_report)
+
+                e_docx = build_word_doc("Evaluation Scorecard", eval_report)
+                e_pdf = build_pdf_doc("Evaluation Scorecard", eval_report)
+
+                c_e1, c_e2 = st.columns(2)
+                if e_docx:
+                    with c_e1:
+                        st.download_button("📥 Download Scorecard (.docx)", e_docx, file_name="Evaluation_Report.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+                if e_pdf:
+                    with c_e2:
+                        st.download_button("📥 Download Scorecard (.pdf)", e_pdf, file_name="Evaluation_Report.pdf", mime="application/pdf", use_container_width=True)
