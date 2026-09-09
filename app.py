@@ -35,9 +35,11 @@ except ImportError:
     Groq = None
 
 try:
-    from google import genai
+    import requests
+    REQUESTS_OK = True
 except ImportError:
-    genai = None
+    requests = None
+    REQUESTS_OK = False
 
 try:
     from reportlab.lib.pagesizes import A4
@@ -50,17 +52,28 @@ except ImportError:
     REPORTLAB_OK = False
 
 # ============================================================
-# 1. IDENTITY & ENVIRONMENT
+# 1. BULLETPROOF KEY RESOLUTION (STREAMLIT SECRETS + .ENV)
 # ============================================================
 load_dotenv(override=True)
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+
+def get_secret(key_name):
+    # 1. Check Streamlit Cloud Secrets first
+    if hasattr(st, "secrets") and key_name in st.secrets:
+        return str(st.secrets[key_name]).strip()
+    # 2. Check os.environ / .env
+    val = os.getenv(key_name, "").strip()
+    if val:
+        return val
+    return ""
+
+GROQ_API_KEY = get_secret("GROQ_API_KEY")
+GEMINI_API_KEY = get_secret("GEMINI_API_KEY")
 
 CREATOR_FULL_NAME = "Anshul Singh Rajpoot"
 OS_NAME = "Aetheris OS"
 
 # ============================================================
-# 2. PAGE CONFIGURATION & EXECUTIVE THEME
+# 2. PAGE CONFIGURATION
 # ============================================================
 st.set_page_config(
     page_title=f"{OS_NAME} • {CREATOR_FULL_NAME}",
@@ -130,15 +143,13 @@ if "processed_docs" not in st.session_state:
     st.session_state.processed_docs = []
 
 # ============================================================
-# 4. DIRECT DETERMINISTIC CONVERTERS (ZERO HALLUCINATION)
+# 4. DIRECT DETERMINISTIC CONVERTERS
 # ============================================================
 def build_docx_bytes(title, content_text):
     if not DOCX_OK:
         return None
     try:
         doc = Document()
-        
-        # Header Metadata
         head = doc.add_heading(title, level=1)
         meta = doc.add_paragraph()
         meta_run = meta.add_run(f"System: {OS_NAME} | Architect: {CREATOR_FULL_NAME} | Date: {datetime.now().strftime('%d-%b-%Y')}")
@@ -146,7 +157,6 @@ def build_docx_bytes(title, content_text):
         meta_run.font.color.rgb = RGBColor(100, 116, 139)
         doc.add_paragraph("―" * 45)
 
-        # Body Paragraphs verbatim
         for paragraph in content_text.split("\n\n"):
             clean_p = paragraph.strip()
             if not clean_p:
@@ -159,7 +169,7 @@ def build_docx_bytes(title, content_text):
         doc.save(buf)
         buf.seek(0)
         return buf.getvalue()
-    except Exception as e:
+    except Exception:
         return None
 
 def build_pdf_bytes(title, content_text):
@@ -191,11 +201,11 @@ def build_pdf_bytes(title, content_text):
         pdf.build(story)
         buf.seek(0)
         return buf.getvalue()
-    except Exception as e:
+    except Exception:
         return None
 
 # ============================================================
-# 5. VERBATIM EXTRACTION ENGINES (IMAGE OCR & PDF PARSER)
+# 5. ZERO-DEPENDENCY NATIVE OCR ENGINE (DIRECT REST + GROQ)
 # ============================================================
 def extract_text_from_pdf(file_bytes):
     if not PDF_OK:
@@ -211,46 +221,48 @@ def extract_text_from_pdf(file_bytes):
     except Exception as e:
         return f"PDF Extraction Error: {str(e)}"
 
-def extract_text_from_image(image_bytes):
-    ocr_prompt = (
-        "Transcribe all text from this image VERBATIM. "
-        "Preserve every single word, sentence, number, Hindi, Sanskrit, or English character exactly as written. "
-        "Do NOT summarize. Do NOT omit anything. Do NOT add conversational greetings or explanations. "
-        "Only output the transcribed raw text."
+def extract_text_from_image(image_bytes, mime_type="image/jpeg"):
+    prompt = (
+        "Transcribe all text from this image VERBATIM in its original script and language (Hindi, Sanskrit, English, or Hinglish). "
+        "Keep line breaks, punctuation, and exact spellings. "
+        "Do NOT summarize, explain, or omit anything. Return only the raw extracted text."
     )
 
-    # 1. Primary Engine: Gemini (Multi-Model Failover)
-    if GEMINI_API_KEY and genai:
+    # 1. Primary: Direct Gemini REST API (Bypasses library/version conflicts)
+    if GEMINI_API_KEY and REQUESTS_OK:
+        b64_data = base64.b64encode(image_bytes).decode("utf-8")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": prompt},
+                    {"inline_data": {"mime_type": mime_type, "data": b64_data}}
+                ]
+            }]
+        }
         try:
-            client = genai.Client(api_key=GEMINI_API_KEY)
-            img = Image.open(io.BytesIO(image_bytes))
-            # Try valid production model names
-            for model_id in ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]:
-                try:
-                    response = client.models.generate_content(
-                        model=model_id,
-                        contents=[ocr_prompt, img]
-                    )
-                    if response and response.text and response.text.strip():
-                        return response.text.strip()
-                except Exception:
-                    continue
+            resp = requests.post(url, json=payload, timeout=25)
+            if resp.status_code == 200:
+                res_data = resp.json()
+                text = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                if text:
+                    return text
         except Exception:
             pass
 
-    # 2. Secondary Engine: Groq Vision Fallback
+    # 2. Secondary: Groq Vision Fallback
     if GROQ_API_KEY and Groq:
         try:
-            g_client = Groq(api_key=GROQ_API_KEY, timeout=15.0)
-            base64_image = base64.b64encode(image_bytes).decode("utf-8")
+            g_client = Groq(api_key=GROQ_API_KEY, timeout=20.0)
+            b64_data = base64.b64encode(image_bytes).decode("utf-8")
             resp = g_client.chat.completions.create(
                 model="llama-3.2-11b-vision-preview",
                 messages=[
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": ocr_prompt},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}}
                         ]
                     }
                 ],
@@ -261,7 +273,7 @@ def extract_text_from_image(image_bytes):
         except Exception:
             pass
 
-    return "Error: Unable to process image. Please check API key configuration."
+    return "Error: Unable to transcribe. Please ensure GEMINI_API_KEY or GROQ_API_KEY is saved in Streamlit Cloud Secrets."
 
 # ============================================================
 # 6. HEADER
@@ -296,11 +308,12 @@ with st.sidebar:
         b_data = upload.getvalue()
         fname = upload.name
         fext = Path(fname).suffix.lower()
+        mime = "image/png" if fext == ".png" else "image/jpeg"
 
         if not any(d["name"] == fname for d in st.session_state.processed_docs):
             with st.spinner(f"Reading and transcribing {fname}..."):
                 if fext in [".png", ".jpg", ".jpeg"]:
-                    extracted = extract_text_from_image(b_data)
+                    extracted = extract_text_from_image(b_data, mime_type=mime)
                 elif fext == ".pdf":
                     extracted = extract_text_from_pdf(b_data)
                 else:
