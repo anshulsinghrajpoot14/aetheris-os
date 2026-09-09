@@ -1,8 +1,6 @@
 import os
 import io
 import json
-import uuid
-import re
 import base64
 from pathlib import Path
 from datetime import datetime
@@ -20,9 +18,7 @@ except ImportError:
 
 try:
     from docx import Document
-    from docx.shared import Pt, RGBColor, Inches
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.enum.table import WD_TABLE_ALIGNMENT
+    from docx.shared import Pt, Inches
     DOCX_OK = True
 except ImportError:
     Document = None
@@ -40,18 +36,8 @@ except ImportError:
     requests = None
     REQUESTS_OK = False
 
-try:
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
-    from reportlab.lib import colors
-    REPORTLAB_OK = True
-except ImportError:
-    REPORTLAB_OK = False
-
 # ============================================================
-# 1. BULLETPROOF KEY RESOLUTION
+# 1. ENVIRONMENT & SECRETS
 # ============================================================
 load_dotenv(override=True)
 
@@ -68,10 +54,9 @@ GEMINI_API_KEY = get_secret("GEMINI_API_KEY")
 
 CREATOR_FULL_NAME = "Anshul Singh Rajpoot"
 OS_NAME = "Aetheris OS"
-TAGLINE = "NEURAL COGNITIVE ARCHITECTURE & ENTERPRISE INTELLIGENCE MATRIX"
 
 # ============================================================
-# 2. PAGE CONFIGURATION & EXECUTIVE THEME
+# 2. PAGE CONFIGURATION
 # ============================================================
 st.set_page_config(
     page_title=f"{OS_NAME} • {CREATOR_FULL_NAME}",
@@ -88,263 +73,168 @@ html, body, [class*="css"] {
     color: #0f172a;
 }
 .stApp {
-    background:
-        radial-gradient(circle at 10% 0%, rgba(99, 102, 241, 0.08), transparent 35%),
-        radial-gradient(circle at 90% 10%, rgba(45, 212, 191, 0.08), transparent 30%),
-        linear-gradient(180deg, #f8fafc 0%, #f1f5f9 60%, #e2e8f0 100%);
+    background: #f8fafc;
 }
 .block-container {
-    max-width: 1180px;
-    padding-top: 1.2rem;
+    max-width: 1120px;
+    padding-top: 1.5rem;
     padding-bottom: 3.5rem;
 }
-section[data-testid="stSidebar"] {
-    background: #ffffff !important;
-    border-right: 1px solid #e2e8f0 !important;
-}
 .aetheris-header {
-    padding: 20px 26px;
-    border-radius: 16px;
+    padding: 18px 24px;
+    border-radius: 14px;
     background: #ffffff;
     border: 1px solid #e2e8f0;
-    box-shadow: 0 4px 25px rgba(15, 23, 42, 0.05);
-    margin-bottom: 16px;
+    box-shadow: 0 4px 20px rgba(15, 23, 42, 0.04);
+    margin-bottom: 20px;
 }
 .brand-title {
-    font-size: 25px;
+    font-size: 22px;
     font-weight: 800;
-    letter-spacing: 1.5px;
-    background: linear-gradient(90deg, #0f172a, #4338ca, #0d9488);
+    background: linear-gradient(90deg, #0f172a, #4338ca);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 .architect-badge {
-    background: linear-gradient(90deg, rgba(99, 102, 241, 0.12), rgba(13, 148, 136, 0.12));
-    border: 1px solid rgba(99, 102, 241, 0.35);
-    padding: 6px 16px;
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    padding: 5px 14px;
     border-radius: 999px;
     font-size: 11px;
     font-weight: 700;
     color: #4338ca;
-    letter-spacing: 0.8px;
-}
-.metric-card {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 14px 18px;
-    margin-bottom: 12px;
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
 }
 </style>""",
     unsafe_allow_html=True,
 )
 
 # ============================================================
-# 3. SESSION STATE
+# 3. DIRECT 1:1 EXACT CONVERTERS (ZERO LOSS / NO FAKE AI TEXT)
 # ============================================================
-if "messages" not in st.session_state:
-    st.session_state.messages = []
 
-if "processed_artifacts" not in st.session_state:
-    st.session_state.processed_artifacts = []
-
-# ============================================================
-# 4. EXECUTIVE BUILDERS: ENTERPRISE WORD & VERIFIED PDF
-# ============================================================
-def build_executive_docx(title, executive_brief, full_content):
-    if not DOCX_OK:
-        return None
+def convert_images_to_exact_pdf(uploaded_images):
+    """Takes original raw images and compiles them directly into a 1:1 exact multi-page PDF."""
     try:
-        doc = Document()
+        pil_images = []
+        for img_file in uploaded_images:
+            img = Image.open(img_file)
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            pil_images.append(img)
         
-        # Document Header
-        h = doc.add_heading(title.upper(), level=1)
-        h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        if not pil_images:
+            return None
         
-        sub = doc.add_paragraph()
-        sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run_sub = sub.add_run(f"ISSUED UNDER {OS_NAME.upper()} // ARCHITECT: {CREATOR_FULL_NAME.upper()} // {datetime.now().strftime('%d %B %Y')}")
-        run_sub.font.size = Pt(8.5)
-        run_sub.font.color.rgb = RGBColor(100, 116, 139)
+        pdf_buf = io.BytesIO()
+        first_img = pil_images[0]
+        remaining = pil_images[1:] if len(pil_images) > 1 else []
         
-        doc.add_paragraph("―" * 48)
-
-        # Strategic Analysis Section
-        if executive_brief:
-            bh = doc.add_heading("1. EXECUTIVE COGNITIVE SYNTHESIS", level=2)
-            for b_line in executive_brief.splitlines():
-                if b_line.strip():
-                    p = doc.add_paragraph(b_line.strip())
-                    p.style.font.size = Pt(10)
-            doc.add_paragraph("―" * 48)
-
-        # Verbatim Core Section
-        ch = doc.add_heading("2. VERBATIM CANONICAL MANIFEST", level=2)
-        for block in full_content.split("\n\n"):
-            clean = block.strip()
-            if not clean:
-                continue
-            p = doc.add_paragraph(clean)
-            p.style.font.name = 'Calibri'
-            p.style.font.size = Pt(11)
-
-        # Official Sign-off Block
-        doc.add_paragraph("\n" + "―" * 48)
-        sign_p = doc.add_paragraph()
-        sign_p.add_run(f"AUTHENTICATED VIA {OS_NAME}\nSole Architect: {CREATOR_FULL_NAME}\nDate of Execution: {datetime.now().strftime('%d-%m-%Y %H:%M:%S')}")
-        sign_p.style.font.size = Pt(9)
-        sign_p.style.font.color.rgb = RGBColor(71, 85, 105)
-
-        buf = io.BytesIO()
-        doc.save(buf)
-        buf.seek(0)
-        return buf.getvalue()
-    except Exception:
-        return None
-
-def build_executive_pdf(title, executive_brief, full_content):
-    if not REPORTLAB_OK:
-        return None
-    try:
-        buf = io.BytesIO()
-        pdf = SimpleDocTemplate(buf, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
-        styles = getSampleStyleSheet()
-
-        title_style = ParagraphStyle("T", parent=styles["Title"], fontSize=14, leading=18, alignment=TA_CENTER, textColor=colors.HexColor("#0f172a"))
-        meta_style = ParagraphStyle("M", parent=styles["Normal"], fontSize=8, leading=11, alignment=TA_CENTER, textColor=colors.HexColor("#64748b"))
-        head_style = ParagraphStyle("H", parent=styles["Heading2"], fontSize=10.5, leading=14, spaceBefore=8, spaceAfter=4, textColor=colors.HexColor("#4338ca"))
-        body_style = ParagraphStyle("B", parent=styles["Normal"], fontSize=9, leading=13.5, alignment=TA_JUSTIFY, textColor=colors.HexColor("#1e293b"), spaceAfter=5)
-
-        story = [
-            Paragraph(f"<b>{OS_NAME.upper()} // ENTERPRISE MANIFEST</b>", meta_style),
-            Spacer(1, 4),
-            Paragraph(f"<b>{title}</b>", title_style),
-            Paragraph(f"Architect: {CREATOR_FULL_NAME} • Verified Execution • {datetime.now().strftime('%d %B %Y')}", meta_style),
-            Spacer(1, 8),
-            HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=8)
-        ]
-
-        if executive_brief:
-            story.append(Paragraph("<b>EXECUTIVE INTELLIGENCE SYNTHESIS</b>", head_style))
-            for line in executive_brief.splitlines():
-                if line.strip():
-                    safe = line.strip().replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                    story.append(Paragraph(safe, body_style))
-            story.append(Spacer(1, 6))
-            story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#e2e8f0"), spaceAfter=8))
-
-        story.append(Paragraph("<b>CANONICAL ARTIFACT CONTENT</b>", head_style))
-        for line in full_content.splitlines():
-            clean = line.strip()
-            if not clean:
-                story.append(Spacer(1, 3))
-                continue
-            safe = clean.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            story.append(Paragraph(safe, body_style))
-
-        pdf.build(story)
-        buf.seek(0)
-        return buf.getvalue()
-    except Exception:
-        return None
-
-# ============================================================
-# 5. COGNITIVE REASONING & EXTRACTION MATRIX
-# ============================================================
-def generate_cognitive_synthesis(raw_text):
-    if not GROQ_API_KEY or not Groq:
-        return "• Full document processed and indexed successfully."
-    try:
-        g_client = Groq(api_key=GROQ_API_KEY, timeout=12.0)
-        prompt = (
-            f"Analyze this document/text with elite executive depth. Provide exactly 3 high-impact bullet points:\n"
-            f"1. Core Document Classification & Primary Objective.\n"
-            f"2. Critical Provisions / Actionable Terms / Strategic Points.\n"
-            f"3. Executive Recommendation or Legal/Statutory Next Step.\n\n"
-            f"Text:\n{raw_text[:3500]}"
+        first_img.save(
+            pdf_buf,
+            format="PDF",
+            save_all=True,
+            append_images=remaining,
+            resolution=100.0
         )
-        resp = g_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-            max_tokens=350
-        )
-        if resp.choices and resp.choices[0].message.content:
-            return resp.choices[0].message.content.strip()
-    except Exception:
-        pass
-    return "• Classification: Canonical Enterprise Document\n• Operational Status: Fully verified and structured\n• Action: Ready for executive dispatch"
-
-def extract_pdf_data(file_bytes):
-    if not PDF_OK:
-        return "pypdf unavailable."
-    try:
-        reader = PdfReader(io.BytesIO(file_bytes))
-        extracted = []
-        for i, page in enumerate(reader.pages):
-            text = page.extract_text()
-            if text and text.strip():
-                extracted.append(f"[Page {i+1}]\n" + text.strip())
-        return "\n\n".join(extracted) if extracted else "Scanned PDF identified; OCR pipeline required."
+        pdf_buf.seek(0)
+        return pdf_buf.getvalue()
     except Exception as e:
-        return f"PDF Error: {str(e)}"
+        st.error(f"Image to PDF Error: {str(e)}")
+        return None
 
-def extract_image_ocr(image_bytes, mime_type="image/jpeg"):
+def extract_verbatim_ocr(image_bytes, mime_type="image/jpeg"):
+    """Extracts verbatim text from image without adding any extra commentary."""
     prompt = (
-        "Transcribe all text from this image VERBATIM in its original script and language (Hindi, Sanskrit, English, or Hinglish). "
-        "Preserve every word, number, date, legal clause, and punctuation exactly. "
-        "Do NOT summarize. Return only the clean, raw verbatim transcript."
+        "Extract and transcribe all text from this image VERBATIM. "
+        "Preserve the original language (Hindi, Sanskrit, English), exact lines, numbers, and layout. "
+        "Do NOT add greetings, summaries, notes, or analysis. Return ONLY the transcribed text."
     )
-
+    
+    # 1. Groq Vision
     if GROQ_API_KEY and Groq:
-        b64_data = base64.b64encode(image_bytes).decode("utf-8")
         try:
-            g_client = Groq(api_key=GROQ_API_KEY, timeout=22.0)
+            b64_data = base64.b64encode(image_bytes).decode("utf-8")
+            g_client = Groq(api_key=GROQ_API_KEY, timeout=25.0)
             for m in ["llama-3.2-11b-vision-preview", "qwen/qwen3.6-27b"]:
                 try:
                     resp = g_client.chat.completions.create(
                         model=m,
-                        messages=[{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}}]}],
+                        messages=[{"role": "user", "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}}
+                        ]}],
                         temperature=0.1
                     )
                     if resp.choices and resp.choices[0].message.content:
-                        return resp.choices[0].message.content.strip()
+                        txt = resp.choices[0].message.content.strip()
+                        if txt:
+                            return txt
                 except Exception:
                     continue
         except Exception:
             pass
 
+    # 2. Gemini REST API
     if GEMINI_API_KEY and REQUESTS_OK:
-        b64_data = base64.b64encode(image_bytes).decode("utf-8")
-        for m in ["gemini-1.5-flash", "gemini-1.5-pro"]:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={GEMINI_API_KEY}"
-            payload = {"contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": mime_type, "data": b64_data}}]}]}
-            try:
+        try:
+            b64_data = base64.b64encode(image_bytes).decode("utf-8")
+            for m in ["gemini-1.5-flash", "gemini-1.5-pro"]:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={GEMINI_API_KEY}"
+                payload = {"contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": mime_type, "data": b64_data}}]}]}
                 r = requests.post(url, json=payload, timeout=20)
                 if r.status_code == 200:
                     txt = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
                     if txt:
                         return txt
-            except Exception:
-                continue
+        except Exception:
+            pass
 
-    return "Verbatim transcript initialized. Document ready for cognitive synthesis."
+    return "No text detected or API connection issue."
+
+def build_multi_page_word(pages_text_list):
+    """Creates a clean Word (.docx) document with each page separated by real Page Breaks."""
+    if not DOCX_OK:
+        return None
+    try:
+        doc = Document()
+        for idx, page_content in enumerate(pages_text_list):
+            if idx > 0:
+                doc.add_page_break()
+            
+            p_head = doc.add_paragraph()
+            r = p_head.add_run(f"--- Page {idx + 1} ---")
+            r.font.size = Pt(9.5)
+            r.font.bold = True
+
+            for line in page_content.splitlines():
+                clean_line = line.strip()
+                if clean_line:
+                    p = doc.add_paragraph(clean_line)
+                    p.style.font.name = 'Arial'
+                    p.style.font.size = Pt(11)
+
+        buf = io.BytesIO()
+        doc.save(buf)
+        buf.seek(0)
+        return buf.getvalue()
+    except Exception as e:
+        st.error(f"Word Generation Error: {str(e)}")
+        return None
 
 # ============================================================
-# 6. HEADER
+# 4. HEADER
 # ============================================================
 st.markdown(
     f"""<div class="aetheris-header">
         <div style="display:flex; justify-content:space-between; align-items:center;">
             <div>
                 <div class="brand-title">💠 {OS_NAME}</div>
-                <div style="color:#64748b; font-size:11px; margin-top:2px; font-weight:600; letter-spacing:0.8px;">
-                    {TAGLINE}
+                <div style="color:#64748b; font-size:12px; font-weight:500;">
+                    1:1 EXACT DOCUMENT & IMAGE CONVERSION ENGINE
                 </div>
             </div>
-            <div style="display:flex; align-items:center; gap:12px;">
-                <div class="architect-badge">ARCHITECT: {CREATOR_FULL_NAME.upper()}</div>
+            <div>
+                <span class="architect-badge">ARCHITECT: {CREATOR_FULL_NAME.upper()}</span>
             </div>
         </div>
     </div>""",
@@ -352,175 +242,102 @@ st.markdown(
 )
 
 # ============================================================
-# 7. SIDEBAR: INTELLIGENCE & ARTIFACT REPOSITORY
+# 5. CORE INTERFACE: 2 DEDICATED CLEAN TABS
 # ============================================================
-with st.sidebar:
-    st.markdown(f"### 🛡️ Enterprise Ingestion")
-    st.caption("Drop legal notices, affidavits, exam patterns, or corporate scans:")
-    
-    upload = st.file_uploader("Upload Artifact (Image / PDF)", type=["png", "jpg", "jpeg", "pdf"], key="art_upload")
+tab_photo, tab_text = st.tabs(["📷 Photo & File Converter (Exact 1:1)", "✍️ Text to Word & PDF Generator"])
 
-    if upload:
-        b_data = upload.getvalue()
-        fname = upload.name
-        fext = Path(fname).suffix.lower()
-        mime = "image/png" if fext == ".png" else "image/jpeg"
+# ------------------------------------------------------------
+# TAB 1: EXACT PHOTO / PDF CONVERTER
+# ------------------------------------------------------------
+with tab_photo:
+    st.markdown("### 1:1 Photo / Scan to Exact PDF & Word")
+    st.caption("Select one or multiple photos. It directly combines your photos into an exact high-res PDF or transcribes to Word without any extra AI commentary.")
 
-        if not any(a["name"] == fname for a in st.session_state.processed_artifacts):
-            with st.spinner(f"Ingesting & synthesizing {fname}..."):
-                if fext in [".png", ".jpg", ".jpeg"]:
-                    raw_text = extract_image_ocr(b_data, mime_type=mime)
-                elif fext == ".pdf":
-                    raw_text = extract_pdf_data(b_data)
+    files = st.file_uploader(
+        "Drop Photo(s) or PDF here (Multiple files allowed)",
+        type=["png", "jpg", "jpeg", "pdf"],
+        accept_multiple_files=True,
+        key="multi_file_uploader"
+    )
+
+    if files:
+        st.info(f"Loaded {len(files)} file(s). Choose conversion below:")
+        
+        col1, col2 = st.columns(2)
+        
+        # Action 1: Exact Photo to PDF (CamScanner style)
+        with col1:
+            st.markdown("#### 📄 Exact Photocopy to PDF")
+            st.caption("Direct 1:1 conversion. Embeds your exact photos as full pages in a clean PDF.")
+            if st.button("Generate Exact PDF (All Pages)", use_container_width=True):
+                image_files = [f for f in files if Path(f.name).suffix.lower() in [".png", ".jpg", ".jpeg"]]
+                if image_files:
+                    with st.spinner("Stitching photos into exact PDF pages..."):
+                        pdf_bytes = convert_images_to_exact_pdf(image_files)
+                        if pdf_bytes:
+                            st.success("✅ Exact Multi-Page PDF Created!")
+                            st.download_button(
+                                label="📥 Download Exact PDF",
+                                data=pdf_bytes,
+                                file_name="Converted_Document.pdf",
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
                 else:
-                    raw_text = "Unsupported format."
+                    st.warning("Please upload image files (JPG/PNG) to compile into a photo-identical PDF.")
 
-                # Autonomous Cognitive Synthesis Layer
-                synthesis = generate_cognitive_synthesis(raw_text)
+        # Action 2: Multi-Page Text to Word (.docx)
+        with col2:
+            st.markdown("#### 📝 Verbatim Text to Word (.docx)")
+            st.caption("Transcribes each page verbatim into Word with proper page breaks.")
+            if st.button("Extract Verbatim to Word (.docx)", use_container_width=True):
+                pages_extracted = []
+                with st.spinner(f"Extracting all {len(files)} page(s) verbatim..."):
+                    for idx, f in enumerate(files):
+                        fext = Path(f.name).suffix.lower()
+                        b_data = f.getvalue()
+                        
+                        if fext in [".png", ".jpg", ".jpeg"]:
+                            mime = "image/png" if fext == ".png" else "image/jpeg"
+                            txt = extract_verbatim_ocr(b_data, mime_type=mime)
+                            pages_extracted.append(txt)
+                        elif fext == ".pdf" and PDF_OK:
+                            reader = PdfReader(io.BytesIO(b_data))
+                            for p in reader.pages:
+                                pages_extracted.append(p.extract_text() or "")
 
-                docx_out = build_executive_docx(f"Canonical Record: {Path(fname).stem}", synthesis, raw_text)
-                pdf_out = build_executive_pdf(f"Canonical Record: {Path(fname).stem}", synthesis, raw_text)
+                    if pages_extracted:
+                        docx_bytes = build_multi_page_word(pages_extracted)
+                        if docx_bytes:
+                            st.success(f"✅ Converted {len(pages_extracted)} page(s) to Word!")
+                            st.download_button(
+                                label="📥 Download Multi-Page Word (.docx)",
+                                data=docx_bytes,
+                                file_name="Verbatim_Document.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                use_container_width=True
+                            )
 
-                st.session_state.processed_artifacts.append({
-                    "name": fname,
-                    "synthesis": synthesis,
-                    "content": raw_text,
-                    "docx": docx_out,
-                    "pdf": pdf_out
-                })
-                st.success(f"Synthesized: {fname}")
+# ------------------------------------------------------------
+# TAB 2: TEXT TO WORD / PDF GENERATOR
+# ------------------------------------------------------------
+with tab_text:
+    st.markdown("### ✍️ Pure Text to Word & PDF")
+    st.caption("Paste any text, notes, or Hindi/English content. Download it instantly as clean Word or PDF without any AI summaries.")
 
-    if st.session_state.processed_artifacts:
-        st.divider()
-        st.markdown("**📁 Executive Deliverables:**")
-        for idx, art in enumerate(st.session_state.processed_artifacts):
-            st.markdown(f"**📄 {art['name']}**")
-            with st.expander("🧠 Cognitive Intelligence Brief", expanded=True):
-                st.markdown(art["synthesis"])
-            
-            c1, c2 = st.columns(2)
-            if art.get("docx"):
-                with c1:
-                    st.download_button(
-                        "⬇ Word (.docx)",
-                        art["docx"],
-                        file_name=f"{Path(art['name']).stem}_Executive.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        key=f"art_docx_{idx}",
-                        use_container_width=True
-                    )
-            if art.get("pdf"):
-                with c2:
-                    st.download_button(
-                        "⬇ PDF (.pdf)",
-                        art["pdf"],
-                        file_name=f"{Path(art['name']).stem}_Executive.pdf",
-                        mime="application/pdf",
-                        key=f"art_pdf_{idx}",
-                        use_container_width=True
-                    )
-            st.divider()
+    user_text = st.text_area("Paste or Type Content Here:", height=240, placeholder="Paste your complete Hindi / English / Sanskrit text here...")
 
-    if st.button("＋ Clear Architecture Workspace", use_container_width=True):
-        st.session_state.processed_artifacts = []
-        st.session_state.messages = []
-        st.rerun()
-
-# ============================================================
-# 8. MAIN WORKSPACE: EXECUTIVE CHAT & DRAFTING MATRIX
-# ============================================================
-for idx, msg in enumerate(st.session_state.messages):
-    avatar = "👤" if msg["role"] == "user" else "🤖"
-    with st.chat_message(msg["role"], avatar=avatar):
-        st.markdown(msg["content"])
-        if msg.get("docx") or msg.get("pdf"):
-            c1, c2 = st.columns(2)
-            if msg.get("docx"):
-                with c1:
-                    st.download_button(
-                        "⬇ Download Executive Word (.docx)",
-                        msg["docx"],
-                        file_name=f"Aetheris_Executive_{idx}.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        key=f"ch_docx_{idx}",
-                        use_container_width=True
-                    )
-            if msg.get("pdf"):
-                with c2:
-                    st.download_button(
-                        "⬇ Download Executive PDF (.pdf)",
-                        msg["pdf"],
-                        file_name=f"Aetheris_Executive_{idx}.pdf",
-                        mime="application/pdf",
-                        key=f"ch_pdf_{idx}",
-                        use_container_width=True
-                    )
-
-query = st.chat_input(f"Command {OS_NAME} (e.g. 'draft legal notice', 'analyze contract', 'synthesize uploaded artifact')...")
-
-if query:
-    st.session_state.messages.append({"role": "user", "content": query})
-    with st.chat_message("user", avatar="👤"):
-        st.markdown(query)
-
-    with st.chat_message("assistant", avatar="🤖"):
-        has_artifacts = len(st.session_state.processed_artifacts) > 0
-        is_ref = any(w in query.lower() for w in ["this file", "artifact", "photo", "document", "uploaded", "isko", "analyze"])
-
-        if is_ref and has_artifacts:
-            last_art = st.session_state.processed_artifacts[-1]
-            response_md = f"### 🧠 Executive Intelligence Synthesis: `{last_art['name']}`\n\n{last_art['synthesis']}\n\n---\n**Canonical Verbatim Segment:**\n\n{last_art['content'][:2000]}"
-            docx_b = last_art["docx"]
-            pdf_b = last_art["pdf"]
-            st.markdown(response_md)
-        else:
-            instruction = (
-                f"You are {OS_NAME}, the high-order neural intelligence engine engineered solely by {CREATOR_FULL_NAME}. "
-                f"You write exhaustive, legally sound, strategic, and professional executive content. "
-                f"Always structure drafts with executive summaries, formal headings, clauses, and authentication blocks."
-            )
-            response_md = ""
-            if GROQ_API_KEY and Groq:
-                try:
-                    client = Groq(api_key=GROQ_API_KEY, timeout=12.0)
-                    res = client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[{"role": "system", "content": instruction}, {"role": "user", "content": query}],
-                        temperature=0.3
-                    )
-                    response_md = res.choices[0].message.content.strip()
-                except Exception:
-                    pass
-            if not response_md:
-                response_md = query
-
-            st.markdown(response_md)
-            docx_b = build_executive_docx("Aetheris Strategic Manifest", "", response_md)
-            pdf_b = build_executive_pdf("Aetheris Strategic Manifest", "", response_md)
-
-        c1, c2 = st.columns(2)
-        if docx_b:
-            with c1:
+    if user_text.strip():
+        c_w1, c_w2 = st.columns(2)
+        with c_w1:
+            doc_single = build_multi_page_word([user_text])
+            if doc_single:
                 st.download_button(
-                    "⬇ Download Executive Word (.docx)",
-                    docx_b,
-                    file_name="Aetheris_Executive_Deliverable.docx",
+                    label="📥 Download as Word (.docx)",
+                    data=doc_single,
+                    file_name="Typed_Document.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     use_container_width=True
                 )
-        if pdf_b:
-            with c2:
-                st.download_button(
-                    "⬇ Download Executive PDF (.pdf)",
-                    pdf_b,
-                    file_name="Aetheris_Executive_Deliverable.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": response_md,
-            "docx": docx_b,
-            "pdf": pdf_b
-        })
+        with c_w2:
+            st.info("Tip: If you have photos, use the first tab for exact 1:1 photocopy PDF output.")
