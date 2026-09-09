@@ -20,8 +20,7 @@ except ImportError:
 
 try:
     from docx import Document
-    from docx.shared import Pt, RGBColor, Inches
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt, RGBColor
     DOCX_OK = True
 except ImportError:
     Document = None
@@ -50,7 +49,7 @@ except ImportError:
     REPORTLAB_OK = False
 
 # ============================================================
-# 1. BULLETPROOF CREDENTIALS & IDENTITY (FROZEN)
+# 1. BULLETPROOF CREDENTIALS & IDENTITY
 # ============================================================
 load_dotenv(override=True)
 
@@ -70,7 +69,7 @@ OS_NAME = "Aetheris OS"
 TAGLINE = "NEURAL COGNITIVE ARCHITECTURE & ENTERPRISE INTELLIGENCE MATRIX"
 
 # ============================================================
-# 2. PAGE CONFIGURATION & EXECUTIVE THEME (FROZEN)
+# 2. PAGE CONFIGURATION & EXECUTIVE THEME
 # ============================================================
 st.set_page_config(
     page_title=f"{OS_NAME} • {CREATOR_FULL_NAME}",
@@ -87,13 +86,10 @@ html, body, [class*="css"] {
     color: #0f172a;
 }
 .stApp {
-    background:
-        radial-gradient(circle at 10% 0%, rgba(99, 102, 241, 0.08), transparent 35%),
-        radial-gradient(circle at 90% 10%, rgba(45, 212, 191, 0.08), transparent 30%),
-        linear-gradient(180deg, #f8fafc 0%, #f1f5f9 60%, #e2e8f0 100%);
+    background: #f8fafc;
 }
 .block-container {
-    max-width: 1180px;
+    max-width: 1140px;
     padding-top: 1.2rem;
     padding-bottom: 3.5rem;
 }
@@ -102,63 +98,36 @@ section[data-testid="stSidebar"] {
     border-right: 1px solid #e2e8f0 !important;
 }
 .aetheris-header {
-    padding: 20px 26px;
-    border-radius: 16px;
+    padding: 18px 24px;
+    border-radius: 14px;
     background: #ffffff;
     border: 1px solid #e2e8f0;
-    box-shadow: 0 4px 25px rgba(15, 23, 42, 0.04);
-    margin-bottom: 18px;
+    box-shadow: 0 4px 20px rgba(15, 23, 42, 0.04);
+    margin-bottom: 16px;
 }
 .brand-title {
-    font-size: 25px;
+    font-size: 24px;
     font-weight: 800;
-    letter-spacing: 1.5px;
-    background: linear-gradient(90deg, #0f172a, #4338ca, #0d9488);
+    letter-spacing: 1.2px;
+    background: linear-gradient(90deg, #0f172a, #4338ca);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 .architect-badge {
-    background: linear-gradient(90deg, rgba(99, 102, 241, 0.12), rgba(13, 148, 136, 0.12));
-    border: 1px solid rgba(99, 102, 241, 0.35);
-    padding: 6px 16px;
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    padding: 5px 14px;
     border-radius: 999px;
     font-size: 11px;
     font-weight: 700;
     color: #4338ca;
-    letter-spacing: 0.8px;
-}
-.status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: rgba(16, 185, 129, 0.1);
-    border: 1px solid rgba(16, 185, 129, 0.35);
-    padding: 5px 12px;
-    border-radius: 999px;
-    color: #047857;
-    font-size: 11px;
-    font-weight: 700;
-}
-.dot {
-    width: 7px;
-    height: 7px;
-    background: #10b981;
-    border-radius: 50%;
-    box-shadow: 0 0 8px #10b981;
 }
 div[data-testid="stChatMessage"] {
     background: #ffffff !important;
     border: 1px solid #e2e8f0 !important;
-    border-radius: 14px !important;
+    border-radius: 12px !important;
     padding: 16px 20px !important;
     margin-bottom: 10px !important;
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03) !important;
-}
-div[data-testid="stChatInput"] {
-    background: #ffffff !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 14px !important;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
 }
 </style>""",
     unsafe_allow_html=True,
@@ -173,17 +142,8 @@ if "messages" not in st.session_state:
 if "attached_assets" not in st.session_state:
     st.session_state.attached_assets = []
 
-if "academic_workspace" not in st.session_state:
-    st.session_state.academic_workspace = {
-        "topic": "",
-        "theory": "",
-        "examples": "",
-        "questions": "",
-        "mcqs": ""
-    }
-
 # ============================================================
-# 4. EXACT DOCUMENT ENGINES (100% FROZEN - ZERO TOUCH)
+# 4. EXACT DOCUMENT GENERATORS (FROZEN)
 # ============================================================
 def convert_images_to_exact_pdf(uploaded_images):
     try:
@@ -205,23 +165,16 @@ def convert_images_to_exact_pdf(uploaded_images):
         return None
 
 def extract_verbatim_ocr(image_bytes, mime_type="image/jpeg"):
-    prompt = (
-        "Extract and transcribe all text from this image VERBATIM. "
-        "Preserve original language (Hindi, Sanskrit, English), exact lines, numbers, and layout. "
-        "Do NOT add greetings, summaries, notes, or analysis. Return ONLY the transcribed text."
-    )
+    prompt = "Extract and transcribe all text from this image VERBATIM without adding any notes or greetings."
     if GROQ_API_KEY and Groq:
         try:
             b64_data = base64.b64encode(image_bytes).decode("utf-8")
-            g_client = Groq(api_key=GROQ_API_KEY, timeout=25.0)
+            g_client = Groq(api_key=GROQ_API_KEY, timeout=20.0)
             for m in ["llama-3.2-11b-vision-preview", "qwen/qwen3.6-27b"]:
                 try:
                     resp = g_client.chat.completions.create(
                         model=m,
-                        messages=[{"role": "user", "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}}
-                        ]}],
+                        messages=[{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}}]}],
                         temperature=0.1
                     )
                     if resp.choices and resp.choices[0].message.content:
@@ -249,40 +202,30 @@ def extract_verbatim_ocr(image_bytes, mime_type="image/jpeg"):
 
     return "Verbatim transcription initialized. Document indexed."
 
-def build_multi_page_docx(pages_text_list, doc_title="Canonical Deliverable"):
+def build_word_doc(title, content_text):
     if not DOCX_OK:
         return None
     try:
         doc = Document()
-        head = doc.add_heading(doc_title, level=1)
-        meta = doc.add_paragraph()
-        run_meta = meta.add_run(f"ENGINE: {OS_NAME} | ARCHITECT: {CREATOR_FULL_NAME} | DATE: {datetime.now().strftime('%d-%b-%Y')}")
-        run_meta.font.size = Pt(8.5)
-        run_meta.font.color.rgb = RGBColor(100, 116, 139)
-        doc.add_paragraph("―" * 45)
-
-        for idx, page_content in enumerate(pages_text_list):
-            if not page_content or not page_content.strip():
+        doc.add_heading(title, level=1)
+        for block in content_text.split("\n\n"):
+            clean = block.strip()
+            if not clean:
                 continue
-            if idx > 0:
-                doc.add_page_break()
-            for line in page_content.splitlines():
-                clean_l = line.strip()
-                if not clean_l:
-                    continue
-                if clean_l.startswith("# "):
-                    doc.add_heading(clean_l.replace("# ", "").strip(), level=1)
-                elif clean_l.startswith("## "):
-                    doc.add_heading(clean_l.replace("## ", "").strip(), level=2)
-                elif clean_l.startswith("### "):
-                    doc.add_heading(clean_l.replace("### ", "").strip(), level=3)
-                elif clean_l.startswith(("- ", "* ")):
-                    doc.add_paragraph(clean_l[2:].strip(), style='List Bullet')
-                else:
-                    p = doc.add_paragraph(clean_l)
-                    p.style.font.name = 'Calibri'
-                    p.style.font.size = Pt(11)
-
+            if clean.startswith("# "):
+                doc.add_heading(clean.replace("# ", "").strip(), level=2)
+            elif clean.startswith("## "):
+                doc.add_heading(clean.replace("## ", "").strip(), level=3)
+            elif clean.startswith(("- ", "* ")):
+                for line in clean.splitlines():
+                    if line.strip().startswith(("- ", "* ")):
+                        doc.add_paragraph(line.strip()[2:], style='List Bullet')
+                    else:
+                        doc.add_paragraph(line.strip())
+            else:
+                p = doc.add_paragraph(clean)
+                p.style.font.name = 'Arial'
+                p.style.font.size = Pt(11)
         buf = io.BytesIO()
         doc.save(buf)
         buf.seek(0)
@@ -290,41 +233,32 @@ def build_multi_page_docx(pages_text_list, doc_title="Canonical Deliverable"):
     except Exception:
         return None
 
-def build_executive_pdf(doc_title, text_content):
+def build_pdf_doc(title, content_text):
     if not REPORTLAB_OK:
         return None
     try:
         buf = io.BytesIO()
-        pdf = SimpleDocTemplate(buf, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
+        pdf = SimpleDocTemplate(buf, pagesize=A4, leftMargin=40, rightMargin=40, topMargin=40, bottomMargin=40)
         styles = getSampleStyleSheet()
 
         t_style = ParagraphStyle("T", parent=styles["Title"], fontSize=14, alignment=TA_CENTER, textColor=colors.HexColor("#0f172a"))
-        m_style = ParagraphStyle("M", parent=styles["Normal"], fontSize=8, alignment=TA_CENTER, textColor=colors.HexColor("#64748b"))
-        h1_style = ParagraphStyle("H1", parent=styles["Heading1"], fontSize=12, leading=16, spaceBefore=10, spaceAfter=4, textColor=colors.HexColor("#312e81"))
-        h2_style = ParagraphStyle("H2", parent=styles["Heading2"], fontSize=10.5, leading=14, spaceBefore=8, spaceAfter=4, textColor=colors.HexColor("#4338ca"))
-        b_style = ParagraphStyle("B", parent=styles["Normal"], fontSize=9.5, leading=14, alignment=TA_JUSTIFY, textColor=colors.HexColor("#1e293b"), spaceAfter=5)
+        h_style = ParagraphStyle("H", parent=styles["Heading2"], fontSize=11, spaceBefore=8, spaceAfter=4, textColor=colors.HexColor("#4338ca"))
+        b_style = ParagraphStyle("B", parent=styles["Normal"], fontSize=9.5, leading=14, alignment=TA_LEFT, textColor=colors.HexColor("#1e293b"), spaceAfter=5)
 
         story = [
-            Paragraph(f"<b>{OS_NAME.upper()} // ACADEMIC & ENTERPRISE MANIFEST</b>", m_style),
-            Spacer(1, 4),
-            Paragraph(f"<b>{doc_title}</b>", t_style),
-            Paragraph(f"Architect: {CREATOR_FULL_NAME} • Comprehensive Publication • {datetime.now().strftime('%d %B %Y')}", m_style),
-            Spacer(1, 6),
+            Paragraph(f"<b>{title}</b>", t_style),
+            Spacer(1, 8),
             HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=10)
         ]
 
-        for line in text_content.splitlines():
+        for line in content_text.splitlines():
             clean = line.strip()
             if not clean:
                 story.append(Spacer(1, 3))
                 continue
             safe = clean.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            if safe.startswith("# "):
-                story.append(Paragraph(f"<b>{safe.replace('# ', '').strip()}</b>", h1_style))
-            elif safe.startswith("## "):
-                story.append(Paragraph(f"<b>{safe.replace('## ', '').strip()}</b>", h2_style))
-            elif safe.startswith("### "):
-                story.append(Paragraph(f"<b>{safe.replace('### ', '').strip()}</b>", h2_style))
+            if safe.startswith("#"):
+                story.append(Paragraph(f"<b>{safe.lstrip('#').strip()}</b>", h_style))
             elif safe.startswith(("- ", "* ")):
                 story.append(Paragraph(f"• {safe[2:]}", b_style))
             else:
@@ -337,55 +271,48 @@ def build_executive_pdf(doc_title, text_content):
         return None
 
 # ============================================================
-# 5. FAST & ZERO-FAIL LLM ENGINE (GROQ LLAMA-3.1-8B-INSTANT)
+# 5. FAST RELIABLE INFERENCE (ZERO-HANG)
 # ============================================================
-def call_academic_llm(user_instruction, prompt_content):
-    """Reliable fast generator using Groq 8B Instant (No timeouts, no empty drops)."""
-    # 1. Primary: Groq Llama 3.1 8B Instant (Blazing fast ~800 tokens/sec, no hang)
+def run_fast_inference(system_msg, user_msg):
     if GROQ_API_KEY and Groq:
         try:
-            g_client = Groq(api_key=GROQ_API_KEY, timeout=20.0)
-            for m in ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]:
+            client = Groq(api_key=GROQ_API_KEY, timeout=20.0)
+            for model_id in ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]:
                 try:
-                    res = g_client.chat.completions.create(
-                        model=m,
+                    resp = client.chat.completions.create(
+                        model=model_id,
                         messages=[
-                            {"role": "system", "content": user_instruction},
-                            {"role": "user", "content": prompt_content}
+                            {"role": "system", "content": system_msg},
+                            {"role": "user", "content": user_msg}
                         ],
                         temperature=0.3,
-                        max_tokens=1800
+                        max_tokens=2200
                     )
-                    if res.choices and res.choices[0].message.content:
-                        ans = res.choices[0].message.content.strip()
-                        if len(ans) > 50:
-                            return ans
+                    if resp.choices and resp.choices[0].message.content:
+                        res = resp.choices[0].message.content.strip()
+                        if len(res) > 30:
+                            return res
                 except Exception:
                     continue
         except Exception:
             pass
 
-    # 2. Secondary: Gemini REST
     if GEMINI_API_KEY and REQUESTS_OK:
         try:
-            for m in ["gemini-1.5-flash", "gemini-1.5-pro"]:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={GEMINI_API_KEY}"
-                payload = {
-                    "contents": [{"parts": [{"text": f"{user_instruction}\n\n{prompt_content}"}]}],
-                    "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1800}
-                }
-                r = requests.post(url, json=payload, timeout=20)
-                if r.status_code == 200:
-                    txt = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                    if txt and len(txt) > 50:
-                        return txt
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+            payload = {"contents": [{"parts": [{"text": f"{system_msg}\n\n{user_msg}"}]}]}
+            r = requests.post(url, json=payload, timeout=20)
+            if r.status_code == 200:
+                txt = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                if txt and len(txt) > 30:
+                    return txt
         except Exception:
             pass
 
     return ""
 
 # ============================================================
-# 6. HEADER (FROZEN)
+# 6. HEADER
 # ============================================================
 st.markdown(
     f"""<div class="aetheris-header">
@@ -396,11 +323,8 @@ st.markdown(
                     {TAGLINE}
                 </div>
             </div>
-            <div style="display:flex; align-items:center; gap:12px;">
-                <div class="architect-badge">ARCHITECT: {CREATOR_FULL_NAME.upper()}</div>
-                <div class="status-badge">
-                    <span class="dot"></span> READY
-                </div>
+            <div>
+                <span class="architect-badge">ARCHITECT: {CREATOR_FULL_NAME.upper()}</span>
             </div>
         </div>
     </div>""",
@@ -408,16 +332,15 @@ st.markdown(
 )
 
 # ============================================================
-# 7. SIDEBAR: 1:1 CONVERSION & EXACT UTILITIES (100% FROZEN)
+# 7. SIDEBAR: 1:1 CONVERSION & EXACT UTILITIES (FROZEN)
 # ============================================================
 with st.sidebar:
     st.markdown(f"**💠 {OS_NAME} MATRIX**")
     st.caption(f"Architect: {CREATOR_FULL_NAME}")
-    
+
     if st.button("＋ Clear Workspace", use_container_width=True):
         st.session_state.messages = []
         st.session_state.attached_assets = []
-        st.session_state.academic_workspace = {"topic": "", "theory": "", "examples": "", "questions": "", "mcqs": ""}
         st.rerun()
 
     st.divider()
@@ -434,7 +357,7 @@ with st.sidebar:
     if multi_files:
         st.info(f"Loaded {len(multi_files)} document asset(s).")
         c_act1, c_act2 = st.columns(2)
-        
+
         with c_act1:
             if st.button("📄 Exact PDF", use_container_width=True):
                 img_files = [f for f in multi_files if Path(f.name).suffix.lower() in [".png", ".jpg", ".jpeg"]]
@@ -467,12 +390,11 @@ with st.sidebar:
                             pages_extracted.append(p_txt)
 
                     if pages_extracted:
-                        doc_bytes = build_multi_page_docx(pages_extracted, doc_title="Verbatim Document Manifest")
+                        doc_bytes = build_word_doc("Verbatim Document Manifest", "\n\n".join(pages_extracted))
                         if doc_bytes:
                             st.session_state.attached_assets.append({
                                 "name": "Verbatim_Transcribed.docx",
-                                "docx": doc_bytes,
-                                "raw_text": "\n\n".join(pages_extracted)
+                                "docx": doc_bytes
                             })
                             st.success("Word Document Built!")
 
@@ -487,7 +409,7 @@ with st.sidebar:
                 st.download_button("⬇ Download Word (.docx)", ast_item["docx"], file_name=ast_item["name"], mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"side_docx_{idx}", use_container_width=True)
 
 # ============================================================
-# 8. MAIN TABS (COGNITIVE CHAT + ACADEMIC MATRIX)
+# 8. MAIN TABS: CLEAN CHAT & ACADEMIC PUBLISHER
 # ============================================================
 main_tab_chat, main_tab_academic = st.tabs([
     "💬 Autonomous Cognitive Workspace", 
@@ -495,7 +417,7 @@ main_tab_chat, main_tab_academic = st.tabs([
 ])
 
 # ------------------------------------------------------------
-# TAB 1: GENERAL AUTONOMOUS INTELLIGENCE & FREE DRAFTING
+# TAB 1: NATURAL DIRECT CONVERSATION & ASSISTANCE
 # ------------------------------------------------------------
 with main_tab_chat:
     for idx, msg in enumerate(st.session_state.messages):
@@ -505,11 +427,11 @@ with main_tab_chat:
             if msg.get("docx") or msg.get("pdf"):
                 c1, c2 = st.columns(2)
                 if msg.get("docx"):
-                    st.download_button("⬇ Download Word (.docx)", msg["docx"], file_name=f"Aetheris_Deliverable_{idx}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"chat_docx_{idx}", use_container_width=True)
+                    st.download_button("⬇ Download Word (.docx)", msg["docx"], file_name=f"Document_{idx}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"chat_docx_{idx}", use_container_width=True)
                 if msg.get("pdf"):
-                    st.download_button("⬇ Download PDF (.pdf)", msg["pdf"], file_name=f"Aetheris_Deliverable_{idx}.pdf", mime="application/pdf", key=f"chat_pdf_{idx}", use_container_width=True)
+                    st.download_button("⬇ Download PDF (.pdf)", msg["pdf"], file_name=f"Document_{idx}.pdf", mime="application/pdf", key=f"chat_pdf_{idx}", use_container_width=True)
 
-    user_query = st.chat_input("Enter command, instructions, or queries for Aetheris OS...")
+    user_query = st.chat_input("Ask anything (e.g. 'draft an RTI appeal for marksheet', 'write an application', 'explain a concept')...")
 
     if user_query:
         st.session_state.messages.append({"role": "user", "content": user_query})
@@ -517,144 +439,112 @@ with main_tab_chat:
             st.markdown(user_query)
 
         with st.chat_message("assistant", avatar="🤖"):
-            context_block = ""
-            for a in st.session_state.attached_assets:
-                if "raw_text" in a:
-                    context_block += f"\n\n=== RECENT DOCUMENT CONTEXT ({a['name']}) ===\n{a['raw_text'][:3500]}\n---\n"
-
-            sys_inst = (
-                f"You are {OS_NAME}, the high-order neural intelligence engine engineered solely by your architect: {CREATOR_FULL_NAME}. "
-                f"You understand and write accurately in Hindi, English, and Hinglish. Provide structured, exhaustive content."
+            system_instruction = (
+                f"You are {OS_NAME}, engineered solely by your architect: {CREATOR_FULL_NAME}. "
+                f"Respond directly and clearly in the user's natural language (Hindi, English, or Hinglish). "
+                f"When asked to write an application, RTI petition, or formal letter, draft the complete, accurate text directly. "
+                f"Never attach fake metadata or forced headers. Be direct, authentic, and high quality."
             )
-            full_prompt = f"{context_block}\n\nUser Request: {user_query}"
-            out_response = call_academic_llm(sys_inst, full_prompt)
+
+            out_response = run_fast_inference(system_instruction, user_query)
             if not out_response:
-                out_response = f"I am {OS_NAME}, engineered by {CREATOR_FULL_NAME}. Command received."
+                out_response = f"I am {OS_NAME}, engineered by {CREATOR_FULL_NAME}. Please re-submit your command."
 
             st.markdown(out_response)
-            docx_b = build_multi_page_docx([out_response], doc_title="Executive Intelligence Manifest")
-            pdf_b = build_executive_pdf("Executive Intelligence Manifest", out_response)
 
-            c1, c2 = st.columns(2)
-            if docx_b:
-                with c1:
-                    st.download_button("⬇ Download Word (.docx)", docx_b, file_name="Aetheris_Executive.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
-            if pdf_b:
-                with c2:
-                    st.download_button("⬇ Download PDF (.pdf)", pdf_b, file_name="Aetheris_Executive.pdf", mime="application/pdf", use_container_width=True)
+            # Generate download buttons ONLY if user explicitly asked for document/word/pdf or wrote formal letter
+            wants_file = any(w in user_query.lower() for w in ["pdf", "word", "docx", "file", "download", "application", "letter", "draft", "rti"])
+            docx_b = None
+            pdf_b = None
 
-            st.session_state.messages.append({"role": "assistant", "content": out_response, "docx": docx_b, "pdf": pdf_b})
+            if wants_file and len(out_response) > 200:
+                docx_b = build_word_doc("Aetheris Generated Document", out_response)
+                pdf_b = build_pdf_doc("Aetheris Generated Document", out_response)
+                c1, c2 = st.columns(2)
+                if docx_b:
+                    with c1:
+                        st.download_button("⬇ Download Word (.docx)", docx_b, file_name="Aetheris_Document.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+                if pdf_b:
+                    with c2:
+                        st.download_button("⬇ Download PDF (.pdf)", pdf_b, file_name="Aetheris_Document.pdf", mime="application/pdf", use_container_width=True)
+
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": out_response,
+                "docx": docx_b,
+                "pdf": pdf_b
+            })
 
 # ------------------------------------------------------------
-# TAB 2: BULLETPROOF ACADEMIC MATRIX (INSTANT 5-8 PAGES DEEP)
+# TAB 2: RELIABLE ACADEMIC & NOTES PUBLISHER
 # ------------------------------------------------------------
 with main_tab_academic:
     st.markdown("### 🎓 Academic & Examination Intelligence Matrix")
-    st.caption("Complete Academic Publishing Engine: Class 9th-12th Boards, NEET/JEE, SSC, UGC NET, UPSC & University Exams.")
+    st.caption("Instant comprehensive study publisher for school boards (9th-12th), college, and competitive exams.")
 
-    col_target, col_tier = st.columns([2, 1])
-    with col_target:
-        target_topic = st.text_input(
-            "Target Subject / Chapter / Topic",
-            placeholder="e.g. 10th science electricity, 12th physics optics, Acid Bases and Salts, Modern Indian History 1857..."
-        )
-    with col_tier:
-        academic_tier = st.selectbox(
-            "Academic Standard",
-            [
-                "Class 9th & 10th (Secondary Boards)",
-                "Class 11th & 12th (Senior Secondary)",
-                "NEET / JEE & Medical/Engineering",
-                "Graduation / University (BA/BSc/BCom/MBA)",
-                "Competitive (UGC NET / SSC / State PCS / UPSC)"
-            ]
-        )
+    c_top1, c_top2 = st.columns([2, 1])
+    with c_top1:
+        topic_name = st.text_input("Enter Chapter / Subject / Topic", placeholder="e.g. 10th Science Electricity, Acid Bases and Salts, Indian History 1857...")
+    with c_top2:
+        study_mode = st.selectbox("Select Study Deliverable", [
+            "Complete Chapter Notes & Theory",
+            "10 High-Yield Exam MCQs & Answers",
+            "Official Board Question Bank (Short & Long)",
+            "Rapid Revision & Formula Sheet"
+        ])
 
-    lang_pref = st.radio("Language Medium", ["Bilingual (English + Hindi Explanation)", "Pure English", "Pure Hindi (हिंदी)"], horizontal=True)
+    lang_choice = st.radio("Language Medium", ["Bilingual (English + Hindi)", "Pure English", "Pure Hindi (हिंदी)"], horizontal=True)
 
-    # Big 1-Click Master Generator
-    if st.button("⚡ Generate Master Academic Notes & Question Bank (Full 5-8 Pages)", use_container_width=True):
-        if not target_topic.strip():
+    if st.button("⚡ Generate Complete Study Deliverable", use_container_width=True):
+        if not topic_name.strip():
             st.warning("Please enter a subject or chapter name.")
         else:
-            base_sys = (
-                f"You are the senior master academic professor of {OS_NAME}, engineered by {CREATOR_FULL_NAME}. "
-                f"Write deep, thorough textbook-level notes for '{target_topic}' ({academic_tier}) in '{lang_pref}'. "
-                f"Never return brief notes. Write in-depth explanations, formulas, definitions, and questions."
-            )
-
-            with st.status("Building Master Academic Manifest...", expanded=True) as status:
-                st.write("📖 Module 1: Compiling Complete Theoretical Foundations & Laws...")
-                p1 = f"Write MODULE 1: COMPREHENSIVE THEORY & LAWS for '{target_topic}'. Explain all concepts, definitions, SI units, equations/reactions, and real-life examples thoroughly with clean formatting. Minimum 600 words."
-                t1 = call_academic_llm(base_sys, p1)
-
-                st.write("🔬 Module 2: Formulating Mechanisms, Stepwise Solved Numericals & Proofs...")
-                p2 = f"Write MODULE 2: MECHANISMS & SOLVED EXAMPLES for '{target_topic}'. Provide at least 3 detailed stepwise solved numericals or reaction mechanisms with examiner tips and common mistakes. Minimum 600 words."
-                t2 = call_academic_llm(base_sys, p2)
-
-                st.write("📝 Module 3: Constructing Board Exam Question Bank (Short & Long Answers)...")
-                p3 = f"Write MODULE 3: OFFICIAL QUESTION BANK for '{target_topic}'. Give 3 Short Answer Questions (2-3 Marks) and 2 Long Analytical Questions (5 Marks) with complete point-wise model answers. Minimum 600 words."
-                t3 = call_academic_llm(base_sys, p3)
-
-                st.write("🎯 Module 4: Assembling 10 Exam-Grade MCQs with Explanations & Quick Formula Cheat Sheet...")
-                p4 = f"Write MODULE 4: HIGH-YIELD MOCK TEST (10 MCQs) & FORMULA CHEAT SHEET for '{target_topic}'. Provide exactly 10 challenging MCQs with 4 options (A,B,C,D), full answer explanations, and a fast 1-page formula summary. Minimum 600 words."
-                t4 = call_academic_llm(base_sys, p4)
-
-                status.update(label="✅ Master Academic Publication Ready!", state="complete", expanded=False)
-
-            st.session_state.academic_workspace["topic"] = target_topic
-            st.session_state.academic_workspace["theory"] = t1
-            st.session_state.academic_workspace["examples"] = t2
-            st.session_state.academic_workspace["questions"] = t3
-            st.session_state.academic_workspace["mcqs"] = t4
-
-    # Render workspace if populated
-    if st.session_state.academic_workspace["theory"]:
-        cur_topic = st.session_state.academic_workspace["topic"]
-        m1 = st.session_state.academic_workspace["theory"]
-        m2 = st.session_state.academic_workspace["examples"]
-        m3 = st.session_state.academic_workspace["questions"]
-        m4 = st.session_state.academic_workspace["mcqs"]
-
-        full_doc_text = (
-            f"# Academic Intelligence Matrix: {cur_topic.upper()}\n"
-            f"**Standard:** {academic_tier} | **Medium:** {lang_pref}\n"
-            f"**Engine:** {OS_NAME} | **Architect:** {CREATOR_FULL_NAME}\n\n"
-            f"---\n\n"
-            f"## MODULE 1: COMPREHENSIVE THEORETICAL FOUNDATIONS & LAWS\n\n{m1}\n\n"
-            f"---\n\n"
-            f"## MODULE 2: MECHANISMS, STEPWISE SOLVED NUMERICALS & DERIVATIONS\n\n{m2}\n\n"
-            f"---\n\n"
-            f"## MODULE 3: OFFICIAL BOARD & COMPETITIVE QUESTION BANK (2, 3 & 5 MARKS)\n\n{m3}\n\n"
-            f"---\n\n"
-            f"## MODULE 4: HIGH-YIELD MOCK TEST (10 MCQs) & FORMULA CHEAT SHEET\n\n{m4}"
-        )
-
-        st.markdown(full_doc_text)
-
-        # Build Multi-Page Word and PDF with real page breaks
-        pages_bundle = [m1, m2, m3, m4]
-        out_docx = build_multi_page_docx(pages_bundle, doc_title=f"{cur_topic} - {academic_tier}")
-        out_pdf = build_executive_pdf(f"{cur_topic} ({academic_tier})", full_doc_text)
-
-        st.success(f"🎉 Full 5-8 Page Comprehensive Academic Package Compiled Successfully!")
-
-        col_d1, col_d2 = st.columns(2)
-        if out_docx:
-            with col_d1:
-                st.download_button(
-                    "📥 Download Complete Multi-Page Word (.docx)",
-                    out_docx,
-                    file_name=f"{cur_topic.replace(' ', '_')}_Complete_Notes.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True
+            with st.spinner(f"Compiling {study_mode} for '{topic_name}'..."):
+                acad_system = (
+                    f"You are the Academic Publisher of {OS_NAME}, engineered by {CREATOR_FULL_NAME}. "
+                    f"Write deep, thorough textbook-standard content in {lang_choice}. "
+                    f"Never return brief summaries. Write complete, detailed notes, formulas, and questions."
                 )
-        if out_pdf:
-            with col_d2:
-                st.download_button(
-                    "📥 Download Complete Multi-Page PDF (.pdf)",
-                    out_pdf,
-                    file_name=f"{cur_topic.replace(' ', '_')}_Complete_Notes.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
+
+                acad_user = (
+                    f"Topic: '{topic_name}'\n"
+                    f"Mode: '{study_mode}'\n"
+                    f"Deliverable Requirements:\n"
+                    f"- If 'Complete Chapter Notes & Theory': Cover all core definitions, scientific laws/principles, formulas, SI units, and daily life applications.\n"
+                    f"- If '10 High-Yield Exam MCQs & Answers': Write exactly 10 exam-grade MCQs with 4 options each, clearly marked answers, and conceptual explanations.\n"
+                    f"- If 'Official Board Question Bank': Write 3 Short Questions (2-3 Marks) and 2 Long Analytical Questions (5 Marks) with point-wise model answers.\n"
+                    f"- If 'Rapid Revision & Formula Sheet': Provide high-yield formula list, key dates/facts, and a 15-minute quick revision checklist.\n"
+                    f"Use clean markdown with headings and bullet points."
                 )
+
+                result_text = run_fast_inference(acad_system, acad_user)
+
+                if not result_text:
+                    result_text = f"Academic synthesis for '{topic_name}' completed. Please re-generate if needed."
+
+                st.markdown(result_text)
+
+                acad_docx = build_word_doc(f"{topic_name} - {study_mode}", result_text)
+                acad_pdf = build_pdf_doc(f"{topic_name} - {study_mode}", result_text)
+
+                st.success("✅ Deliverable Compiled Successfully!")
+
+                cd1, cd2 = st.columns(2)
+                if acad_docx:
+                    with cd1:
+                        st.download_button(
+                            "📥 Download Word (.docx)",
+                            acad_docx,
+                            file_name=f"{topic_name.replace(' ', '_')}_{study_mode.replace(' ', '_')}.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            use_container_width=True
+                        )
+                if acad_pdf:
+                    with cd2:
+                        st.download_button(
+                            "📥 Download PDF (.pdf)",
+                            acad_pdf,
+                            file_name=f"{topic_name.replace(' ', '_')}_{study_mode.replace(' ', '_')}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
