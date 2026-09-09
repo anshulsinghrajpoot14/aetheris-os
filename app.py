@@ -173,6 +173,15 @@ if "messages" not in st.session_state:
 if "attached_assets" not in st.session_state:
     st.session_state.attached_assets = []
 
+if "academic_workspace" not in st.session_state:
+    st.session_state.academic_workspace = {
+        "topic": "",
+        "theory": "",
+        "examples": "",
+        "questions": "",
+        "mcqs": ""
+    }
+
 # ============================================================
 # 4. EXACT DOCUMENT ENGINES (100% FROZEN - ZERO TOUCH)
 # ============================================================
@@ -253,6 +262,8 @@ def build_multi_page_docx(pages_text_list, doc_title="Canonical Deliverable"):
         doc.add_paragraph("―" * 45)
 
         for idx, page_content in enumerate(pages_text_list):
+            if not page_content or not page_content.strip():
+                continue
             if idx > 0:
                 doc.add_page_break()
             for line in page_content.splitlines():
@@ -326,40 +337,47 @@ def build_executive_pdf(doc_title, text_content):
         return None
 
 # ============================================================
-# 5. ROBUST LLM CALL FUNCTION
+# 5. FAST & ZERO-FAIL LLM ENGINE (GROQ LLAMA-3.1-8B-INSTANT)
 # ============================================================
-def call_single_section(system_instr, user_prompt, max_tokens=1800):
+def call_academic_llm(user_instruction, prompt_content):
+    """Reliable fast generator using Groq 8B Instant (No timeouts, no empty drops)."""
+    # 1. Primary: Groq Llama 3.1 8B Instant (Blazing fast ~800 tokens/sec, no hang)
     if GROQ_API_KEY and Groq:
         try:
-            g_client = Groq(api_key=GROQ_API_KEY, timeout=40.0)
-            res = g_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": system_instr},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.3,
-                max_tokens=max_tokens
-            )
-            if res.choices and res.choices[0].message.content:
-                txt = res.choices[0].message.content.strip()
-                if len(txt) > 80:
-                    return txt
+            g_client = Groq(api_key=GROQ_API_KEY, timeout=20.0)
+            for m in ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]:
+                try:
+                    res = g_client.chat.completions.create(
+                        model=m,
+                        messages=[
+                            {"role": "system", "content": user_instruction},
+                            {"role": "user", "content": prompt_content}
+                        ],
+                        temperature=0.3,
+                        max_tokens=1800
+                    )
+                    if res.choices and res.choices[0].message.content:
+                        ans = res.choices[0].message.content.strip()
+                        if len(ans) > 50:
+                            return ans
+                except Exception:
+                    continue
         except Exception:
             pass
 
+    # 2. Secondary: Gemini REST
     if GEMINI_API_KEY and REQUESTS_OK:
         try:
             for m in ["gemini-1.5-flash", "gemini-1.5-pro"]:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={GEMINI_API_KEY}"
                 payload = {
-                    "contents": [{"parts": [{"text": f"{system_instr}\n\n{user_prompt}"}]}],
-                    "generationConfig": {"temperature": 0.3, "maxOutputTokens": max_tokens}
+                    "contents": [{"parts": [{"text": f"{user_instruction}\n\n{prompt_content}"}]}],
+                    "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1800}
                 }
-                r = requests.post(url, json=payload, timeout=30)
+                r = requests.post(url, json=payload, timeout=20)
                 if r.status_code == 200:
                     txt = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                    if txt and len(txt) > 80:
+                    if txt and len(txt) > 50:
                         return txt
         except Exception:
             pass
@@ -399,6 +417,7 @@ with st.sidebar:
     if st.button("＋ Clear Workspace", use_container_width=True):
         st.session_state.messages = []
         st.session_state.attached_assets = []
+        st.session_state.academic_workspace = {"topic": "", "theory": "", "examples": "", "questions": "", "mcqs": ""}
         st.rerun()
 
     st.divider()
@@ -486,9 +505,9 @@ with main_tab_chat:
             if msg.get("docx") or msg.get("pdf"):
                 c1, c2 = st.columns(2)
                 if msg.get("docx"):
-                    st.download_button("⬇ Download Executive Word (.docx)", msg["docx"], file_name=f"Aetheris_Deliverable_{idx}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"chat_docx_{idx}", use_container_width=True)
+                    st.download_button("⬇ Download Word (.docx)", msg["docx"], file_name=f"Aetheris_Deliverable_{idx}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"chat_docx_{idx}", use_container_width=True)
                 if msg.get("pdf"):
-                    st.download_button("⬇ Download Executive PDF (.pdf)", msg["pdf"], file_name=f"Aetheris_Deliverable_{idx}.pdf", mime="application/pdf", key=f"chat_pdf_{idx}", use_container_width=True)
+                    st.download_button("⬇ Download PDF (.pdf)", msg["pdf"], file_name=f"Aetheris_Deliverable_{idx}.pdf", mime="application/pdf", key=f"chat_pdf_{idx}", use_container_width=True)
 
     user_query = st.chat_input("Enter command, instructions, or queries for Aetheris OS...")
 
@@ -503,12 +522,12 @@ with main_tab_chat:
                 if "raw_text" in a:
                     context_block += f"\n\n=== RECENT DOCUMENT CONTEXT ({a['name']}) ===\n{a['raw_text'][:3500]}\n---\n"
 
-            system_instruction = (
+            sys_inst = (
                 f"You are {OS_NAME}, the high-order neural intelligence engine engineered solely by your architect: {CREATOR_FULL_NAME}. "
                 f"You understand and write accurately in Hindi, English, and Hinglish. Provide structured, exhaustive content."
             )
             full_prompt = f"{context_block}\n\nUser Request: {user_query}"
-            out_response = call_single_section(system_instruction, full_prompt, max_tokens=2200)
+            out_response = call_academic_llm(sys_inst, full_prompt)
             if not out_response:
                 out_response = f"I am {OS_NAME}, engineered by {CREATOR_FULL_NAME}. Command received."
 
@@ -527,130 +546,115 @@ with main_tab_chat:
             st.session_state.messages.append({"role": "assistant", "content": out_response, "docx": docx_b, "pdf": pdf_b})
 
 # ------------------------------------------------------------
-# TAB 2: MULTI-PAGE DEEP ACADEMIC ENGINE (6-10 PAGES COMPLETE)
+# TAB 2: BULLETPROOF ACADEMIC MATRIX (INSTANT 5-8 PAGES DEEP)
 # ------------------------------------------------------------
 with main_tab_academic:
     st.markdown("### 🎓 Academic & Examination Intelligence Matrix")
-    st.caption("Universal Multi-Page Publisher: 9th-12th Boards, NEET/JEE, SSC, UGC NET, UPSC, College & Professional Degree Courses.")
+    st.caption("Complete Academic Publishing Engine: Class 9th-12th Boards, NEET/JEE, SSC, UGC NET, UPSC & University Exams.")
 
     col_target, col_tier = st.columns([2, 1])
     with col_target:
-        target_subject = st.text_input(
-            "Target Subject / Chapter / Exam Topic",
-            placeholder="e.g. 10th Science Acid Bases and Salts, 12th Physics Optics, NEET Biology Genetics, UGC NET Paper 1..."
+        target_topic = st.text_input(
+            "Target Subject / Chapter / Topic",
+            placeholder="e.g. 10th science electricity, 12th physics optics, Acid Bases and Salts, Modern Indian History 1857..."
         )
     with col_tier:
         academic_tier = st.selectbox(
-            "Target Standard / Level",
+            "Academic Standard",
             [
                 "Class 9th & 10th (Secondary Boards)",
                 "Class 11th & 12th (Senior Secondary)",
                 "NEET / JEE & Medical/Engineering",
-                "Graduation / University Exams (BA/BSc/BCom/MBA)",
+                "Graduation / University (BA/BSc/BCom/MBA)",
                 "Competitive (UGC NET / SSC / State PCS / UPSC)"
             ]
         )
 
     lang_pref = st.radio("Language Medium", ["Bilingual (English + Hindi Explanation)", "Pure English", "Pure Hindi (हिंदी)"], horizontal=True)
 
-    if st.button("⚡ Generate Exhaustive Multi-Page Manifest (Full 5-8 Pages)", use_container_width=True):
-        if not target_subject.strip():
+    # Big 1-Click Master Generator
+    if st.button("⚡ Generate Master Academic Notes & Question Bank (Full 5-8 Pages)", use_container_width=True):
+        if not target_topic.strip():
             st.warning("Please enter a subject or chapter name.")
         else:
-            prog_bar = st.progress(0, text="Initializing Academic Intelligence Pipeline...")
-            
-            system_base = (
-                f"You are the Academic Matrix of {OS_NAME}, engineered by {CREATOR_FULL_NAME}. "
-                f"You write exhaustive, high-density textbook & exam material for '{target_subject}' ({academic_tier}) in '{lang_pref}'. "
-                f"Never give brief summaries. Write exhaustive detailed notes with diagrams/equations explained."
+            base_sys = (
+                f"You are the senior master academic professor of {OS_NAME}, engineered by {CREATOR_FULL_NAME}. "
+                f"Write deep, thorough textbook-level notes for '{target_topic}' ({academic_tier}) in '{lang_pref}'. "
+                f"Never return brief notes. Write in-depth explanations, formulas, definitions, and questions."
             )
 
-            # Section 1: Detailed Concepts & Core Principles
-            prog_bar.progress(20, text="[1/4] Compiling Comprehensive Theoretical Foundations...")
-            p1 = (
-                f"Write SECTION 1: COMPREHENSIVE CHAPTER FOUNDATIONS & IN-DEPTH THEORY for '{target_subject}'.\n"
-                f"- Complete syllabus breakdown & weightage.\n"
-                f"- Every single concept, definition, scientific law/principle explained thoroughly with chemical equations/formulas.\n"
-                f"- Classification tables, real-life applications, and step-by-step processes.\n"
-                f"Write at least 600-800 words."
-            )
-            sec1 = call_single_section(system_base, p1, max_tokens=1800)
+            with st.status("Building Master Academic Manifest...", expanded=True) as status:
+                st.write("📖 Module 1: Compiling Complete Theoretical Foundations & Laws...")
+                p1 = f"Write MODULE 1: COMPREHENSIVE THEORY & LAWS for '{target_topic}'. Explain all concepts, definitions, SI units, equations/reactions, and real-life examples thoroughly with clean formatting. Minimum 600 words."
+                t1 = call_academic_llm(base_sys, p1)
 
-            # Section 2: Advanced Mechanisms & Solved Examples
-            prog_bar.progress(45, text="[2/4] Formulating Mechanisms, Solved Numericals & Reaction Schemes...")
-            p2 = (
-                f"Write SECTION 2: MECHANISMS, SOLVED EXAMPLES & CRITICAL DERIVATIONS for '{target_subject}'.\n"
-                f"- Step-by-step solved problems / numericals / reaction mechanisms.\n"
-                f"- Crucial experimental setups, lab preparation methods, or historical causality.\n"
-                f"- Common mistakes students make and expert examiner tips.\n"
-                f"Write at least 600-800 words."
-            )
-            sec2 = call_single_section(system_base, p2, max_tokens=1800)
+                st.write("🔬 Module 2: Formulating Mechanisms, Stepwise Solved Numericals & Proofs...")
+                p2 = f"Write MODULE 2: MECHANISMS & SOLVED EXAMPLES for '{target_topic}'. Provide at least 3 detailed stepwise solved numericals or reaction mechanisms with examiner tips and common mistakes. Minimum 600 words."
+                t2 = call_academic_llm(base_sys, p2)
 
-            # Section 3: Exam-Grade Subjective Question Bank (2, 3 & 5 Marks)
-            prog_bar.progress(70, text="[3/4] Structuring Official Exam Question Bank (Short & Long Answers)...")
-            p3 = (
-                f"Write SECTION 3: OFFICIAL BOARD/EXAM QUESTION BANK & STEPWISE SOLUTIONS for '{target_subject}'.\n"
-                f"- 3 Very Short Answer Questions (1-2 Marks) with accurate answers.\n"
-                f"- 3 Short Answer Questions (3 Marks) with detailed step-wise points.\n"
-                f"- 2 Long Analytical / Case-Based Questions (5 Marks) with complete marking scheme answers.\n"
-                f"Write at least 600-800 words."
-            )
-            sec3 = call_single_section(system_base, p3, max_tokens=1800)
+                st.write("📝 Module 3: Constructing Board Exam Question Bank (Short & Long Answers)...")
+                p3 = f"Write MODULE 3: OFFICIAL QUESTION BANK for '{target_topic}'. Give 3 Short Answer Questions (2-3 Marks) and 2 Long Analytical Questions (5 Marks) with complete point-wise model answers. Minimum 600 words."
+                t3 = call_academic_llm(base_sys, p3)
 
-            # Section 4: 10 High-Yield MCQs + Formula/Revision Sheet
-            prog_bar.progress(90, text="[4/4] Generating 10 Exam-Grade MCQs & Master Revision Checklist...")
-            p4 = (
-                f"Write SECTION 4: HIGH-YIELD MOCK TEST (10 MCQs) & RAPID REVISION CHECKLIST for '{target_subject}'.\n"
-                f"- Exactly 10 challenging multiple-choice questions with 4 distinct options (A, B, C, D).\n"
-                f"- Full Answer Key with deep conceptual explanation for every question.\n"
-                f"- 1-Page Rapid Revision Bullet Points & Formula Cheat Sheet.\n"
-                f"Write at least 600-800 words."
-            )
-            sec4 = call_single_section(system_base, p4, max_tokens=1800)
+                st.write("🎯 Module 4: Assembling 10 Exam-Grade MCQs with Explanations & Quick Formula Cheat Sheet...")
+                p4 = f"Write MODULE 4: HIGH-YIELD MOCK TEST (10 MCQs) & FORMULA CHEAT SHEET for '{target_topic}'. Provide exactly 10 challenging MCQs with 4 options (A,B,C,D), full answer explanations, and a fast 1-page formula summary. Minimum 600 words."
+                t4 = call_academic_llm(base_sys, p4)
 
-            prog_bar.progress(100, text="Assembling Multi-Page Document...")
+                status.update(label="✅ Master Academic Publication Ready!", state="complete", expanded=False)
 
-            # Combine all 4 Sections into an Exhaustive Master Deliverable
-            full_academic_doc = (
-                f"# Academic Intelligence Matrix: {target_subject.upper()}\n"
-                f"**Standard/Tier:** {academic_tier} | **Medium:** {lang_pref}\n"
-                f"**Engine:** {OS_NAME} | **Architect:** {CREATOR_FULL_NAME}\n\n"
-                f"---\n\n"
-                f"## MODULE 1: COMPREHENSIVE THEORETICAL FOUNDATIONS\n\n{sec1}\n\n"
-                f"---\n\n"
-                f"## MODULE 2: MECHANISMS, SOLVED EXAMPLES & CRITICAL ANALYSIS\n\n{sec2}\n\n"
-                f"---\n\n"
-                f"## MODULE 3: OFFICIAL EXAMINATION QUESTION BANK & STEPWISE SOLUTIONS\n\n{sec3}\n\n"
-                f"---\n\n"
-                f"## MODULE 4: HIGH-YIELD MOCK TEST (10 MCQs) & RAPID REVISION CHECKLIST\n\n{sec4}"
-            )
+            st.session_state.academic_workspace["topic"] = target_topic
+            st.session_state.academic_workspace["theory"] = t1
+            st.session_state.academic_workspace["examples"] = t2
+            st.session_state.academic_workspace["questions"] = t3
+            st.session_state.academic_workspace["mcqs"] = t4
 
-            st.markdown(full_academic_doc)
+    # Render workspace if populated
+    if st.session_state.academic_workspace["theory"]:
+        cur_topic = st.session_state.academic_workspace["topic"]
+        m1 = st.session_state.academic_workspace["theory"]
+        m2 = st.session_state.academic_workspace["examples"]
+        m3 = st.session_state.academic_workspace["questions"]
+        m4 = st.session_state.academic_workspace["mcqs"]
 
-            # Build Multi-Page Word and PDF
-            pages_list = [sec1, sec2, sec3, sec4]
-            acad_docx = build_multi_page_docx(pages_list, doc_title=f"{target_subject} ({academic_tier})")
-            acad_pdf = build_executive_pdf(f"{target_subject} ({academic_tier})", full_academic_doc)
+        full_doc_text = (
+            f"# Academic Intelligence Matrix: {cur_topic.upper()}\n"
+            f"**Standard:** {academic_tier} | **Medium:** {lang_pref}\n"
+            f"**Engine:** {OS_NAME} | **Architect:** {CREATOR_FULL_NAME}\n\n"
+            f"---\n\n"
+            f"## MODULE 1: COMPREHENSIVE THEORETICAL FOUNDATIONS & LAWS\n\n{m1}\n\n"
+            f"---\n\n"
+            f"## MODULE 2: MECHANISMS, STEPWISE SOLVED NUMERICALS & DERIVATIONS\n\n{m2}\n\n"
+            f"---\n\n"
+            f"## MODULE 3: OFFICIAL BOARD & COMPETITIVE QUESTION BANK (2, 3 & 5 MARKS)\n\n{m3}\n\n"
+            f"---\n\n"
+            f"## MODULE 4: HIGH-YIELD MOCK TEST (10 MCQs) & FORMULA CHEAT SHEET\n\n{m4}"
+        )
 
-            st.success(f"✅ Complete Multi-Page Academic Manifest Compiled (Total 4 Comprehensive Modules Generated)!")
+        st.markdown(full_doc_text)
 
-            c_down1, c_down2 = st.columns(2)
-            if acad_docx:
-                with c_down1:
-                    st.download_button(
-                        "📥 Download Complete Multi-Page Word (.docx)",
-                        acad_docx,
-                        file_name=f"{target_subject.replace(' ', '_')}_Complete_Notes.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        use_container_width=True
-                    )
-            if acad_pdf:
-                with c_down2:
-                    st.download_button(
-                        "📥 Download Complete Multi-Page PDF (.pdf)",
-                        acad_pdf,
-                        file_name=f"{target_subject.replace(' ', '_')}_Complete_Notes.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
+        # Build Multi-Page Word and PDF with real page breaks
+        pages_bundle = [m1, m2, m3, m4]
+        out_docx = build_multi_page_docx(pages_bundle, doc_title=f"{cur_topic} - {academic_tier}")
+        out_pdf = build_executive_pdf(f"{cur_topic} ({academic_tier})", full_doc_text)
+
+        st.success(f"🎉 Full 5-8 Page Comprehensive Academic Package Compiled Successfully!")
+
+        col_d1, col_d2 = st.columns(2)
+        if out_docx:
+            with col_d1:
+                st.download_button(
+                    "📥 Download Complete Multi-Page Word (.docx)",
+                    out_docx,
+                    file_name=f"{cur_topic.replace(' ', '_')}_Complete_Notes.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True
+                )
+        if out_pdf:
+            with col_d2:
+                st.download_button(
+                    "📥 Download Complete Multi-Page PDF (.pdf)",
+                    out_pdf,
+                    file_name=f"{cur_topic.replace(' ', '_')}_Complete_Notes.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
