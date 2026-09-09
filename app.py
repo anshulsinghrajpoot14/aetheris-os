@@ -3,6 +3,7 @@ import io
 import json
 import uuid
 import re
+import base64
 from pathlib import Path
 from datetime import datetime
 
@@ -159,7 +160,6 @@ def build_docx_bytes(title, content_text):
         buf.seek(0)
         return buf.getvalue()
     except Exception as e:
-        st.error(f"DOCX Build Error: {str(e)}")
         return None
 
 def build_pdf_bytes(title, content_text):
@@ -192,7 +192,6 @@ def build_pdf_bytes(title, content_text):
         buf.seek(0)
         return buf.getvalue()
     except Exception as e:
-        st.error(f"PDF Build Error: {str(e)}")
         return None
 
 # ============================================================
@@ -208,29 +207,61 @@ def extract_text_from_pdf(file_bytes):
             text = page.extract_text()
             if text and text.strip():
                 extracted.append(f"--- Page {i+1} ---\n" + text.strip())
-        return "\n\n".join(extracted) if extracted else "No selectable text found in PDF (scanned PDF requires OCR image upload)."
+        return "\n\n".join(extracted) if extracted else "No selectable text found in PDF."
     except Exception as e:
         return f"PDF Extraction Error: {str(e)}"
 
 def extract_text_from_image(image_bytes):
-    if not GEMINI_API_KEY or not genai:
-        return "Gemini API key missing for OCR processing."
-    try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        img = Image.open(io.BytesIO(image_bytes))
-        prompt = (
-            "Transcribe all text from this image VERBATIM. "
-            "Preserve every single word, sentence, number, Hindi, Sanskrit, or English character exactly as written. "
-            "Do NOT summarize. Do NOT omit anything. Do NOT add conversational greetings or explanations. "
-            "Only output the transcribed raw text."
-        )
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[prompt, img]
-        )
-        return response.text.strip() if response and response.text else "No legible text found."
-    except Exception as e:
-        return f"Vision OCR Error: {str(e)}"
+    ocr_prompt = (
+        "Transcribe all text from this image VERBATIM. "
+        "Preserve every single word, sentence, number, Hindi, Sanskrit, or English character exactly as written. "
+        "Do NOT summarize. Do NOT omit anything. Do NOT add conversational greetings or explanations. "
+        "Only output the transcribed raw text."
+    )
+
+    # 1. Primary Engine: Gemini (Multi-Model Failover)
+    if GEMINI_API_KEY and genai:
+        try:
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            img = Image.open(io.BytesIO(image_bytes))
+            # Try valid production model names
+            for model_id in ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]:
+                try:
+                    response = client.models.generate_content(
+                        model=model_id,
+                        contents=[ocr_prompt, img]
+                    )
+                    if response and response.text and response.text.strip():
+                        return response.text.strip()
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    # 2. Secondary Engine: Groq Vision Fallback
+    if GROQ_API_KEY and Groq:
+        try:
+            g_client = Groq(api_key=GROQ_API_KEY, timeout=15.0)
+            base64_image = base64.b64encode(image_bytes).decode("utf-8")
+            resp = g_client.chat.completions.create(
+                model="llama-3.2-11b-vision-preview",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": ocr_prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                        ]
+                    }
+                ],
+                temperature=0.1
+            )
+            if resp.choices and resp.choices[0].message.content:
+                return resp.choices[0].message.content.strip()
+        except Exception:
+            pass
+
+    return "Error: Unable to process image. Please check API key configuration."
 
 # ============================================================
 # 6. HEADER
@@ -266,9 +297,8 @@ with st.sidebar:
         fname = upload.name
         fext = Path(fname).suffix.lower()
 
-        # Process only if not already processed in this state
         if not any(d["name"] == fname for d in st.session_state.processed_docs):
-            with st.spinner(f"Converting {fname} verbatim..."):
+            with st.spinner(f"Reading and transcribing {fname}..."):
                 if fext in [".png", ".jpg", ".jpeg"]:
                     extracted = extract_text_from_image(b_data)
                 elif fext == ".pdf":
@@ -292,7 +322,7 @@ with st.sidebar:
         st.markdown("**📁 Converted Deliverables:**")
         for idx, item in enumerate(st.session_state.processed_docs):
             st.markdown(f"**{item['name']}**")
-            with st.expander("👁️ View Extracted Content"):
+            with st.expander("👁️ View Extracted Content", expanded=True):
                 st.text_area("Verbatim Text", item["content"], height=140, key=f"txt_{idx}")
             
             c1, c2 = st.columns(2)
@@ -353,7 +383,7 @@ for idx, msg in enumerate(st.session_state.messages):
                         use_container_width=True
                     )
 
-user_prompt = st.chat_input("Enter text to convert to Word/PDF or ask to draft a document...")
+user_prompt = st.chat_input("Enter text or ask to draft a document...")
 
 if user_prompt:
     st.session_state.messages.append({"role": "user", "content": user_prompt})
@@ -361,18 +391,16 @@ if user_prompt:
         st.markdown(user_prompt)
 
     with st.chat_message("assistant", avatar="🤖"):
-        # Check if user specifically asks to convert the uploaded document
-        is_convert_req = any(k in user_prompt.lower() for k in ["convert", "word me", "pdf me", "docx me", "badlo"])
+        is_convert_req = any(k in user_prompt.lower() for k in ["convert", "word me", "pdf me", "docx me", "badlo", "photo"])
         has_docs = len(st.session_state.processed_docs) > 0
 
         if is_convert_req and has_docs:
             last_doc = st.session_state.processed_docs[-1]
-            out_text = f"✅ Successfully converted **{last_doc['name']}**! Here is the full extracted content:\n\n{last_doc['content']}"
+            out_text = f"✅ Extracted content from **{last_doc['name']}**:\n\n{last_doc['content']}"
             docx_file = last_doc["docx"]
             pdf_file = last_doc["pdf"]
             st.markdown(out_text)
         else:
-            # Generate AI text via Groq/Gemini
             instruction = f"You are {OS_NAME}, engineered by {CREATOR_FULL_NAME}. Write exhaustive, complete, verbatim text as requested."
             out_text = ""
             if GROQ_API_KEY and Groq:
@@ -384,13 +412,6 @@ if user_prompt:
                         temperature=0.3
                     )
                     out_text = r.choices[0].message.content.strip()
-                except Exception:
-                    pass
-            if not out_text and GEMINI_API_KEY and genai:
-                try:
-                    gclient = genai.Client(api_key=GEMINI_API_KEY)
-                    gr = gclient.models.generate_content(model="gemini-2.5-flash", contents=f"{instruction}\n\n{user_prompt}")
-                    out_text = gr.text.strip()
                 except Exception:
                     pass
             if not out_text:
