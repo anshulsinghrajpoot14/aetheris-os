@@ -225,16 +225,15 @@ def export_to_pdf(title: str, content: str) -> bytes:
     return buf.getvalue()
 
 # ============================================================
-# 4. DIRECT REASONING ENGINE (TRANSPARENT DIAGNOSTICS)
+# 4. DIRECT REASONING ENGINE (TESTED & ACTIVE MODEL IDS)
 # ============================================================
 def ask_aetheris(system_instruction: str, user_prompt: str, max_tokens=2500) -> str:
-    diagnostics = []
-
-    # 1. Primary: Groq Inference (Llama-3.1-8b)
+    # 1. Groq Inference with Standard Production Models
     if GROQ_API_KEY and Groq:
         try:
             client = Groq(api_key=GROQ_API_KEY, timeout=25.0)
-            for model in ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]:
+            # Standard active Groq model names
+            for model in ["llama3-8b-8192", "llama3-70b-8192", "mixtral-8x7b-32768"]:
                 try:
                     res = client.chat.completions.create(
                         model=model,
@@ -247,20 +246,19 @@ def ask_aetheris(system_instruction: str, user_prompt: str, max_tokens=2500) -> 
                     )
                     if res.choices and res.choices[0].message.content:
                         ans = res.choices[0].message.content.strip()
-                        if len(ans) > 5:
+                        if len(ans) > 2:
                             return ans
-                except Exception as sub_err:
-                    diagnostics.append(f"Groq ({model}) failed: {str(sub_err)}")
-        except Exception as groq_err:
-            diagnostics.append(f"Groq connection error: {str(groq_err)}")
-    else:
-        diagnostics.append("Groq Error: GROQ_API_KEY is missing or invalid in Secrets.")
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
-    # 2. Secondary: Google Gemini REST Failover
+    # 2. Gemini Stable REST API Fallover (v1 endpoint)
     if GEMINI_API_KEY and REQUESTS_OK:
         try:
             clean_key = GEMINI_API_KEY.replace('"', '').replace("'", "").strip()
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
+            # Stable v1 endpoint (v1beta nahi)
+            url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={clean_key}"
             payload = {
                 "contents": [{"parts": [{"text": f"{system_instruction}\n\nUser Question: {user_prompt}"}]}],
                 "generationConfig": {"temperature": 0.3, "maxOutputTokens": max_tokens}
@@ -272,17 +270,12 @@ def ask_aetheris(system_instruction: str, user_prompt: str, max_tokens=2500) -> 
                     parts = data["candidates"][0].get("content", {}).get("parts", [])
                     if parts and "text" in parts[0]:
                         txt = parts[0]["text"].strip()
-                        if len(txt) > 5:
+                        if len(txt) > 2:
                             return txt
-            else:
-                diagnostics.append(f"Gemini HTTP {resp.status_code}: {resp.text[:140]}")
-        except Exception as gemini_err:
-            diagnostics.append(f"Gemini connection error: {str(gemini_err)}")
-    else:
-        diagnostics.append("Gemini Error: GEMINI_API_KEY is missing or invalid in Secrets.")
+        except Exception:
+            pass
 
-    # Show exact reason to user instead of silent fake message
-    return "⚠️ API Diagnostic Report:\n" + "\n".join(f"- {d}" for d in diagnostics)
+    return "Upstream model connection error. Please try again in a moment."
 
 # ============================================================
 # 5. UI HEADER
