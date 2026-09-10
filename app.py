@@ -225,12 +225,13 @@ def export_to_pdf(title: str, content: str) -> bytes:
     return buf.getvalue()
 
 # ============================================================
-# 4. INTELLIGENCE ENGINE (GROQ + GEMINI FAILOVER)
+# 4. INTELLIGENCE ENGINE (NO HARDCODED RTI, PURE INFERENCE)
 # ============================================================
 def ask_aetheris(system_instruction: str, user_prompt: str, max_tokens=2500) -> str:
+    # 1. Groq Llama 3.1 8B Instant (Ultra-fast)
     if GROQ_API_KEY and Groq:
         try:
-            client = Groq(api_key=GROQ_API_KEY, timeout=30.0)
+            client = Groq(api_key=GROQ_API_KEY, timeout=25.0)
             for model in ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]:
                 try:
                     res = client.chat.completions.create(
@@ -244,30 +245,31 @@ def ask_aetheris(system_instruction: str, user_prompt: str, max_tokens=2500) -> 
                     )
                     if res.choices and res.choices[0].message.content:
                         ans = res.choices[0].message.content.strip()
-                        if len(ans) > 20:
+                        if len(ans) > 5:
                             return ans
                 except Exception:
                     continue
         except Exception:
             pass
 
+    # 2. Gemini REST API
     if GEMINI_API_KEY and REQUESTS_OK:
         try:
             clean_key = GEMINI_API_KEY.replace('"', '').replace("'", "")
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
             payload = {
-                "contents": [{"parts": [{"text": f"{system_instruction}\n\n{user_prompt}"}]}],
+                "contents": [{"parts": [{"text": f"{system_instruction}\n\nUser Question: {user_prompt}"}]}],
                 "generationConfig": {"temperature": 0.3, "maxOutputTokens": max_tokens}
             }
             resp = requests.post(url, json=payload, timeout=25)
             if resp.status_code == 200:
                 txt = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                if txt and len(txt) > 20:
+                if txt and len(txt) > 5:
                     return txt
         except Exception:
             pass
 
-    return "⚠️ System is temporarily unable to reach upstream inference. Please verify API keys in Streamlit Secrets."
+    return "API response error. Please check your network or API keys in secrets."
 
 # ============================================================
 # 5. UI HEADER
@@ -283,7 +285,7 @@ st.markdown(f"""<div class="aetheris-header">
 </div>""", unsafe_allow_html=True)
 
 # ============================================================
-# 6. SIDEBAR: 1:1 CONVERTER
+# 6. SIDEBAR: 1:1 CONVERTER (FROZEN)
 # ============================================================
 with st.sidebar:
     st.markdown(f"**💠 {SYSTEM_NAME} MATRIX**")
@@ -334,24 +336,25 @@ with st.sidebar:
 # ============================================================
 tab_chat, tab_academic = st.tabs(["💬 Autonomous Workspace", "🎓 Academic & Examination Matrix"])
 
-# TAB 1: PURE DIRECT CHAT
+# TAB 1: PURE DIRECT CHAT (DIRECT ANSWER TO USER'S QUERY)
 with tab_chat:
     for m in st.session_state.messages:
         with st.chat_message(m["role"], avatar="👤" if m["role"] == "user" else "🤖"):
             st.markdown(m["content"])
 
-    user_query = st.chat_input("Ask anything (RTI drafting, conceptual queries, applications)...")
+    user_query = st.chat_input("Ask any doubt or question (History, Science, Maths, Current Affairs, Logic)...")
     if user_query:
         st.session_state.messages.append({"role": "user", "content": user_query})
         with st.chat_message("user", avatar="👤"):
             st.markdown(user_query)
 
         with st.chat_message("assistant", avatar="🤖"):
-            with st.spinner("Generating response..."):
+            with st.spinner("Answering..."):
                 sys_instruction = (
                     f"You are {SYSTEM_NAME}, engineered by {CREATOR_NAME}. "
-                    f"Answer authentically and thoroughly in Hindi, English, or Hinglish as requested. "
-                    f"If asked to write an application, RTI, or legal draft, provide the complete official document without placeholders or brief summaries."
+                    "Address the user's specific question directly, accurately, and naturally in sentence 1. "
+                    "Do NOT assume or force any RTI, letter format, or predefined template unless the user explicitly requests one. "
+                    "Answer doubts, academic concepts, factual questions, or general discussions clearly in Hindi, Hinglish, or English based on the user's tone."
                 )
                 reply = ask_aetheris(sys_instruction, user_query)
                 st.markdown(reply)
@@ -370,21 +373,21 @@ with tab_academic:
         with c2:
             tier = st.selectbox("Standard / Exam", ["Secondary Boards (9th-10th)", "Senior Secondary (11th-12th)", "NEET / JEE", "UGC NET / SSC / State PCS"])
 
-        if st.button("⚡ Generate Exhaustive Notes", use_container_width=True):
+        if st.button("⚡ Generate Complete Notes", use_container_width=True):
             if not topic.strip():
-                st.warning("Please specify a topic.")
+                st.warning("Please enter a topic.")
             else:
-                with st.spinner(f"Compiling material for '{topic}'..."):
+                with st.spinner(f"Compiling notes for '{topic}'..."):
                     sys_academic = (
-                        f"You are the Academic Head of {SYSTEM_NAME}. Write a high-density, complete study manifest for '{topic}' ({tier}). "
-                        f"Include: 1. Core Theory & Governing Laws/Formulas. 2. Solved Step-by-Step Examples. 3. 5 Exam Questions (Short & Long) with answers. 4. 5 Exam-Grade MCQs with explanations."
+                        f"You are the Academic Engine of {SYSTEM_NAME}. Write clear, comprehensive textbook-grade notes on '{topic}' ({tier}). "
+                        "Cover definitions, key principles/formulas, solved examples, and practice MCQs with explanations."
                     )
-                    notes = ask_aetheris(sys_academic, f"Generate complete study package for: {topic}", max_tokens=2800)
+                    notes = ask_aetheris(sys_academic, f"Provide comprehensive notes for: {topic}", max_tokens=2800)
                     st.markdown(notes)
 
                     d_bytes = export_to_docx(f"{topic} Notes", notes)
                     p_bytes = export_to_pdf(f"{topic} Notes", notes)
-                    st.success("✅ Manifest Compiled! Download below:")
+                    st.success("✅ Notes compiled!")
                     cd1, cd2 = st.columns(2)
                     if d_bytes:
                         with cd1:
@@ -403,15 +406,15 @@ with tab_academic:
 
         if st.button("⚖️ Evaluate Answer Sheet", use_container_width=True):
             if not q_file or not a_file:
-                st.warning("Please upload BOTH the Question Paper and Answer Sheet.")
+                st.warning("Please upload BOTH files.")
             else:
-                with st.spinner("Extracting content and evaluating answers..."):
+                with st.spinner("Evaluating student copy against question paper..."):
                     q_text = read_file_content(q_file)
                     a_text = read_file_content(a_file)
 
                     eval_sys = (
-                        f"You are the Chief Examiner of {SYSTEM_NAME}. Evaluate the student's answer sheet strictly against the question paper. "
-                        f"Output: 1. Scorecard (Marks obtained vs Total). 2. Question-by-question scoring and deductions. 3. Key mistakes and advice."
+                        f"You are the Chief Examiner of {SYSTEM_NAME}. Compare the student's answer sheet against the question paper. "
+                        "Provide a structured evaluation: 1. Total Scorecard. 2. Question-wise marks and deductions. 3. Mistakes and improvement points."
                     )
                     eval_report = ask_aetheris(eval_sys, f"QUESTION PAPER:\n{q_text[:3000]}\n\nSTUDENT ANSWERS:\n{a_text[:3000]}", max_tokens=2800)
                     st.markdown(eval_report)
