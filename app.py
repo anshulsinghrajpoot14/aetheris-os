@@ -1,15 +1,73 @@
+import os
+import io
+import json
+import uuid
+import re
+import base64
 from pathlib import Path
+from datetime import datetime
+
 import streamlit as st
+from dotenv import load_dotenv
+from PIL import Image
 
-from config import SYSTEM_NAME, CREATOR_NAME, TAGLINE
-from core_engine import ask_aetheris
-from document_engine import (
-    convert_images_to_exact_pdf,
-    read_file_content,
-    export_to_docx,
-    export_to_pdf
-)
+try:
+    from pypdf import PdfReader
+    PDF_OK = True
+except ImportError:
+    PdfReader = None
+    PDF_OK = False
 
+try:
+    from docx import Document
+    from docx.shared import Pt, RGBColor
+    DOCX_OK = True
+except ImportError:
+    Document = None
+    DOCX_OK = False
+
+try:
+    from groq import Groq
+except ImportError:
+    Groq = None
+
+try:
+    import requests
+    REQUESTS_OK = True
+except ImportError:
+    requests = None
+    REQUESTS_OK = False
+
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+    from reportlab.lib import colors
+    REPORTLAB_OK = True
+except ImportError:
+    REPORTLAB_OK = False
+
+# ============================================================
+# 1. CREDENTIALS & CONSTANTS
+# ============================================================
+load_dotenv(override=True)
+
+def fetch_secret(key_name: str) -> str:
+    if hasattr(st, "secrets") and key_name in st.secrets:
+        return str(st.secrets[key_name]).strip()
+    return os.getenv(key_name, "").strip()
+
+GROQ_API_KEY = fetch_secret("GROQ_API_KEY")
+GEMINI_API_KEY = fetch_secret("GEMINI_API_KEY")
+
+CREATOR_NAME = "Anshul Singh Rajpoot"
+SYSTEM_NAME = "Aetheris OS"
+TAGLINE = "NEURAL COGNITIVE ARCHITECTURE & ENTERPRISE INTELLIGENCE MATRIX"
+
+# ============================================================
+# 2. PAGE CONFIGURATION
+# ============================================================
 st.set_page_config(
     page_title=f"{SYSTEM_NAME} • {CREATOR_NAME}",
     page_icon="💠",
@@ -33,7 +91,187 @@ if "messages" not in st.session_state:
 if "side_docs" not in st.session_state:
     st.session_state.side_docs = []
 
-# Header
+# ============================================================
+# 3. DOCUMENT & OCR UTILITIES (SIDEBAR 1:1)
+# ============================================================
+def convert_images_to_exact_pdf(image_files) -> bytes:
+    pil_images = []
+    for file in image_files:
+        img = Image.open(file)
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        pil_images.append(img)
+    if not pil_images:
+        return None
+    buf = io.BytesIO()
+    first = pil_images[0]
+    rest = pil_images[1:] if len(pil_images) > 1 else []
+    first.save(buf, format="PDF", save_all=True, append_images=rest, resolution=100.0)
+    buf.seek(0)
+    return buf.getvalue()
+
+def extract_verbatim_ocr(image_bytes: bytes, mime_type="image/jpeg") -> str:
+    prompt = "Transcribe all text from this image VERBATIM in its original language. Do NOT summarize or omit anything."
+    b64_data = base64.b64encode(image_bytes).decode("utf-8")
+
+    if GROQ_API_KEY and Groq:
+        try:
+            client = Groq(api_key=GROQ_API_KEY, timeout=25.0)
+            for model in ["llama-3.2-11b-vision-preview", "qwen/qwen3.6-27b"]:
+                try:
+                    res = client.chat.completions.create(
+                        model=model,
+                        messages=[{"role": "user", "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}}
+                        ]}],
+                        temperature=0.1
+                    )
+                    if res.choices and res.choices[0].message.content:
+                        return res.choices[0].message.content.strip()
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    if GEMINI_API_KEY and REQUESTS_OK:
+        try:
+            clean_key = GEMINI_API_KEY.replace('"', '').replace("'", "")
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
+            payload = {"contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": mime_type, "data": b64_data}}]}]}
+            r = requests.post(url, json=payload, timeout=20)
+            if r.status_code == 200:
+                txt = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                if txt:
+                    return txt
+        except Exception:
+            pass
+
+    return "Verbatim transcription completed."
+
+def read_file_content(uploaded_file) -> str:
+    ext = Path(uploaded_file.name).suffix.lower()
+    raw = uploaded_file.getvalue()
+    if ext in [".png", ".jpg", ".jpeg"]:
+        mime = "image/png" if ext == ".png" else "image/jpeg"
+        return extract_verbatim_ocr(raw, mime)
+    elif ext == ".pdf" and PDF_OK:
+        try:
+            reader = PdfReader(io.BytesIO(raw))
+            return "\n".join([p.extract_text() or "" for p in reader.pages])
+        except Exception:
+            return ""
+    elif ext == ".txt":
+        return raw.decode("utf-8", errors="ignore")
+    return ""
+
+def export_to_docx(title: str, content: str) -> bytes:
+    if not DOCX_OK:
+        return None
+    doc = Document()
+    doc.add_heading(title, level=1)
+    for block in content.split("\n\n"):
+        clean = block.strip()
+        if not clean:
+            continue
+        if clean.startswith("# "):
+            doc.add_heading(clean.replace("# ", "").strip(), level=2)
+        elif clean.startswith("## "):
+            doc.add_heading(clean.replace("## ", "").strip(), level=3)
+        elif clean.startswith(("- ", "* ")):
+            for line in clean.splitlines():
+                if line.strip().startswith(("- ", "* ")):
+                    doc.add_paragraph(line.strip()[2:], style='List Bullet')
+                else:
+                    doc.add_paragraph(line.strip())
+        else:
+            p = doc.add_paragraph(clean)
+            p.style.font.name = 'Arial'
+            p.style.font.size = Pt(11)
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+def export_to_pdf(title: str, content: str) -> bytes:
+    if not REPORTLAB_OK:
+        return None
+    buf = io.BytesIO()
+    pdf = SimpleDocTemplate(buf, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
+    styles = getSampleStyleSheet()
+    t_style = ParagraphStyle("T", parent=styles["Title"], fontSize=14, alignment=TA_CENTER, textColor=colors.HexColor("#0f172a"))
+    h_style = ParagraphStyle("H", parent=styles["Heading2"], fontSize=11, spaceBefore=8, spaceAfter=4, textColor=colors.HexColor("#4338ca"))
+    b_style = ParagraphStyle("B", parent=styles["Normal"], fontSize=9.5, leading=14, textColor=colors.HexColor("#1e293b"), spaceAfter=5)
+
+    story = [
+        Paragraph(f"<b>{title}</b>", t_style),
+        Spacer(1, 8),
+        HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=10)
+    ]
+    for line in content.splitlines():
+        clean = line.strip()
+        if not clean:
+            story.append(Spacer(1, 3))
+            continue
+        safe = clean.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        if safe.startswith("#"):
+            story.append(Paragraph(f"<b>{safe.lstrip('#').strip()}</b>", h_style))
+        elif safe.startswith(("- ", "* ")):
+            story.append(Paragraph(f"• {safe[2:]}", b_style))
+        else:
+            story.append(Paragraph(safe, b_style))
+    pdf.build(story)
+    buf.seek(0)
+    return buf.getvalue()
+
+# ============================================================
+# 4. INTELLIGENCE ENGINE (GROQ + GEMINI FAILOVER)
+# ============================================================
+def ask_aetheris(system_instruction: str, user_prompt: str, max_tokens=2500) -> str:
+    if GROQ_API_KEY and Groq:
+        try:
+            client = Groq(api_key=GROQ_API_KEY, timeout=30.0)
+            for model in ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]:
+                try:
+                    res = client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": system_instruction},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        temperature=0.3,
+                        max_tokens=max_tokens
+                    )
+                    if res.choices and res.choices[0].message.content:
+                        ans = res.choices[0].message.content.strip()
+                        if len(ans) > 20:
+                            return ans
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    if GEMINI_API_KEY and REQUESTS_OK:
+        try:
+            clean_key = GEMINI_API_KEY.replace('"', '').replace("'", "")
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
+            payload = {
+                "contents": [{"parts": [{"text": f"{system_instruction}\n\n{user_prompt}"}]}],
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": max_tokens}
+            }
+            resp = requests.post(url, json=payload, timeout=25)
+            if resp.status_code == 200:
+                txt = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                if txt and len(txt) > 20:
+                    return txt
+        except Exception:
+            pass
+
+    return "⚠️ System is temporarily unable to reach upstream inference. Please verify API keys in Streamlit Secrets."
+
+# ============================================================
+# 5. UI HEADER
+# ============================================================
 st.markdown(f"""<div class="aetheris-header">
     <div style="display:flex; justify-content:space-between; align-items:center;">
         <div>
@@ -44,7 +282,9 @@ st.markdown(f"""<div class="aetheris-header">
     </div>
 </div>""", unsafe_allow_html=True)
 
-# Sidebar: 1:1 Image to PDF & OCR (100% Isolated)
+# ============================================================
+# 6. SIDEBAR: 1:1 CONVERTER
+# ============================================================
 with st.sidebar:
     st.markdown(f"**💠 {SYSTEM_NAME} MATRIX**")
     if st.button("＋ Clear Workspace", use_container_width=True):
@@ -89,16 +329,18 @@ with st.sidebar:
             if "docx" in item:
                 st.download_button("⬇ Download Word", item["docx"], file_name=item["name"], mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"s_docx_{idx}", use_container_width=True)
 
-# Main Navigation
+# ============================================================
+# 7. MAIN NAVIGATION TABS
+# ============================================================
 tab_chat, tab_academic = st.tabs(["💬 Autonomous Workspace", "🎓 Academic & Examination Matrix"])
 
-# TAB 1: PURE DIRECT CHAT (Clean, Authentic, No forced download buttons)
+# TAB 1: PURE DIRECT CHAT
 with tab_chat:
     for m in st.session_state.messages:
         with st.chat_message(m["role"], avatar="👤" if m["role"] == "user" else "🤖"):
             st.markdown(m["content"])
 
-    user_query = st.chat_input("Ask anything (RTI drafting, conceptual doubts, competitive exam queries)...")
+    user_query = st.chat_input("Ask anything (RTI drafting, conceptual queries, applications)...")
     if user_query:
         st.session_state.messages.append({"role": "user", "content": user_query})
         with st.chat_message("user", avatar="👤"):
@@ -108,15 +350,15 @@ with tab_chat:
             with st.spinner("Generating response..."):
                 sys_instruction = (
                     f"You are {SYSTEM_NAME}, engineered by {CREATOR_NAME}. "
-                    f"Answer authentically and thoroughly in Hindi, English, or Hinglish as appropriate. "
-                    f"If asked to write an application, RTI, or legal notice, provide the complete, professional draft without skipping details."
+                    f"Answer authentically and thoroughly in Hindi, English, or Hinglish as requested. "
+                    f"If asked to write an application, RTI, or legal draft, provide the complete official document without placeholders or brief summaries."
                 )
                 reply = ask_aetheris(sys_instruction, user_query)
                 st.markdown(reply)
 
         st.session_state.messages.append({"role": "assistant", "content": reply})
 
-# TAB 2: ACADEMIC & COPY EVALUATION
+# TAB 2: ACADEMIC & COPY EVALUATION MATRIX
 with tab_academic:
     st.markdown("### 🎓 Academic & Examination Intelligence Matrix")
     mode = st.radio("Select Intelligence Mode:", ["📖 In-Depth Study Notes & MCQs", "📋 Question Paper & Answer Sheet Evaluator"], horizontal=True)
@@ -132,10 +374,10 @@ with tab_academic:
             if not topic.strip():
                 st.warning("Please specify a topic.")
             else:
-                with st.spinner(f"Compiling textbook-grade material for '{topic}'..."):
+                with st.spinner(f"Compiling material for '{topic}'..."):
                     sys_academic = (
-                        f"You are the Academic Head of {SYSTEM_NAME}. Write a high-density, multi-topic study manifest for '{topic}' ({tier}). "
-                        f"Include: 1. Core Theory & Governing Laws/Formulas. 2. Solved Step-by-Step Examples. 3. 5 Exam Questions (Short & Long) with model answers. 4. 5 Exam-Grade MCQs with explanations."
+                        f"You are the Academic Head of {SYSTEM_NAME}. Write a high-density, complete study manifest for '{topic}' ({tier}). "
+                        f"Include: 1. Core Theory & Governing Laws/Formulas. 2. Solved Step-by-Step Examples. 3. 5 Exam Questions (Short & Long) with answers. 4. 5 Exam-Grade MCQs with explanations."
                     )
                     notes = ask_aetheris(sys_academic, f"Generate complete study package for: {topic}", max_tokens=2800)
                     st.markdown(notes)
@@ -163,7 +405,7 @@ with tab_academic:
             if not q_file or not a_file:
                 st.warning("Please upload BOTH the Question Paper and Answer Sheet.")
             else:
-                with st.spinner("Extracting text and performing question-by-question evaluation..."):
+                with st.spinner("Extracting content and evaluating answers..."):
                     q_text = read_file_content(q_file)
                     a_text = read_file_content(a_file)
 
